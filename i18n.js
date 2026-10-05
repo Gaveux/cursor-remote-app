@@ -8,6 +8,7 @@ const I18N = (() => {
     '连接中…': 'Connecting…', '对话': 'Chat', '文件': 'Files', '画面': 'Screen', '↑ 加载更早的消息': '↑ Load earlier messages',
     '项目': 'Project', '正在读取项目…': 'Reading the project…', '空文件夹': 'Empty folder', '只显示了前 2000 项': 'Showing the first 2,000 entries',
     '找不到这个窗口对应的项目文件夹': 'No project folder for this window', '路径越界': 'Path is outside the project',
+    '远程项目的文件服务还不可用': 'The remote project is not ready to list files yet', '读取远程文件超时': 'Timed out reading the remote file',
     '没找到聊天面板。': 'No chat panel found.', '请在 Cursor 里打开 Agent 对话，或切到「画面」查看。': 'Open an Agent chat in Cursor, or switch to "Screen".',
     '↓ 最新': '↓ Latest', '聊天面板': 'Chat panel', '整个窗口': 'Whole window', '点击': 'Tap', '滚动': 'Scroll', '刷新': 'Refresh',
     '回车': 'Enter', '⌘回车': '⌘Enter', '打开聊天': 'Open chat', '右键': 'Right-click', '历史': 'History', '＋ 新建': '+ New',
@@ -153,7 +154,7 @@ const I18N = (() => {
   const tr = s => lang === 'zh' || s == null ? s : String(s).split('\n').map(line).join('\n');
 
   // Content mirrored from Cursor or the computer's files is never translated.
-  const SKIP = '#items, #vBody, #vName, #vPath, #titleText, #treeRoot, .treeName, .qt, [data-label] .lbl, [data-win] .lbl, .qnQ, .qnOpt span';
+  const SKIP = '#items, #vBody, #vName, #vPath, #titleText, .treeName, .qt, [data-label] .lbl, [data-win] .lbl, .qnQ, .qnOpt span';
   const ATTRS = ['placeholder', 'title', 'aria-label'];
   const fix = node => {
     if (node.nodeType === 3) {
