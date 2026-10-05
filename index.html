@@ -923,7 +923,15 @@ function setMode(m) {
   document.querySelector('footer .row').hidden = mode === 'files';
   if (authed) send({ t: 'mode', mode: mode === 'files' ? 'chat' : mode });
   if (mode === 'screen') { layoutStage(); applyQuality(); }
-  if (mode === 'files' && authed && !treeKids.has('')) loadTree('');
+  if (mode === 'files' && !treeKids.has('')) {
+    if (authed) loadTree('');
+    else {
+      const note = document.createElement('div');
+      note.className = 'treeNote';
+      note.textContent = '未连接';
+      $('tree').replaceChildren(note);
+    }
+  }
 }
 $('tabChat').onclick = () => setMode('chat');
 $('tabFiles').onclick = () => setMode('files');
