@@ -65,6 +65,8 @@
   #treeBar { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #333; background: #252526; }
   #treeRoot { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #ccc; font-size: 13px; }
   #treeRefresh { flex: none; padding: 4px 10px; font-size: 13px; }
+  #gitRow { flex: none; width: 100%; text-align: left; padding: 10px 12px; border: none; border-radius: 0; border-bottom: 1px solid #333; background: #252526; color: #9cc8ff; font-size: 14px; }
+  #gitRow[hidden] { display: none; }
   #tree { flex: 1; overflow: auto; padding: 4px 0 20px; -webkit-overflow-scrolling: touch; }
   .treeRow { display: flex; width: 100%; text-align: left; background: none; border: none; border-radius: 0; padding: 7px 12px; gap: 6px; align-items: center; color: #d4d4d4; }
   .treeRow .twist { flex: none; width: 1em; color: #888; }
@@ -184,6 +186,11 @@
   #vBody.wrap .l { white-space: pre-wrap; overflow-wrap: anywhere; }
   #vBody .l i { flex: none; width: 3.6em; padding-right: 10px; text-align: right; color: #5a5a5a; font-style: normal; user-select: none; -webkit-user-select: none; }
   #vBody .l.hl { background: #264f7855; }
+  #vBody .l.add { background: #1e3a28; }
+  #vBody .l.del { background: #3a1e1e; }
+  #vBody .l.add i { color: #73c991; }
+  #vBody .l.del i { color: #f14c4c; }
+  #vBody .l.skip { color: #888; background: #2a2a2a; }
   #vBody img { display: block; max-width: 100%; margin: 12px auto; background: #fff1; }
   #vBody .note { padding: 30px 20px; color: #999; text-align: center; line-height: 1.7; }
   #vBody .note.err { color: #f77; }
@@ -228,6 +235,7 @@
 
   <section id="filesView" class="view">
     <div id="treeBar"><span id="treeRoot">项目</span><button id="treeRefresh" type="button">刷新</button></div>
+    <button id="gitRow" type="button" hidden></button>
     <div id="tree"></div>
   </section>
 
@@ -583,7 +591,13 @@ function connect() {
       send({ t: 'windows' });
       resetTree();
       if (mode === 'files') loadTree('');
+      gitState = null;
+      gitLoading = true;
+      gitWantSheet = false;
+      paintGit();
+      send({ t: 'git' });
     }
+    else if (m.t === 'git') onGit(m);
     else if (m.t === 'tree') renderTree(m);
     else if (m.t === 'menu') showMenu(m.kind, m.items, m.max);
     else if (m.t === 'params') showParams(m);
@@ -650,6 +664,66 @@ function showMenu(kind, items, max) {
     const pick = `<button class="opt ${it.checked ? 'cur' : ''}" data-kind="${kind}" data-label="${esc(it.label)}"><span class="lbl">${esc(it.label)}</span></button>`;
     return it.params ? `<div class="optRow">${pick}<button class="paramBtn" data-params="${esc(it.id)}" data-plabel="${esc(it.label)}">参数</button></div>` : pick;
   }).join(''));
+}
+
+let gitState = null;
+let gitLoading = false;
+let gitWantSheet = false;
+const GIT_GROUP = { index: '已暂存', workingTree: '未暂存', untracked: '未跟踪', merge: '冲突' };
+
+function gitLabel() {
+  if (gitLoading && !gitState) return '正在读取提交改动…';
+  if (!gitState) return '';
+  if (gitState.error) return gitState.error;
+  const n = (gitState.files || []).length;
+  return n ? `相对上次提交改了 ${n} 个文件 ›` : '没有相对上次提交的改动';
+}
+
+function paintGit() {
+  const row = $('gitRow');
+  const label = gitLabel();
+  row.hidden = !label;
+  row.textContent = label;
+  if (lastChat) renderQueue(lastChat.busy, lastChat.queued || [], lastChat.subagents || [], lastChat.readonly, lastChat.changed);
+}
+
+function showGit(m) {
+  status('');
+  const files = m.files || [];
+  const title = m.root ? `相对上次提交 · ${m.root}（${files.length}）` : `相对上次提交（${files.length}）`;
+  if (!files.length) {
+    openSheet('git', `<h3>${esc(title)}</h3><div class="hint">没有相对上次提交的改动</div>`);
+    return;
+  }
+  const multi = new Set(files.map(f => f.root).filter(Boolean)).size > 1;
+  openSheet('git', `<h3>${esc(title)}</h3>` + files.map(f => {
+    const counts = f.add == null ? '' : `<span class="sub"><span class="add">+${f.add}</span> <span class="del">−${f.del}</span></span>`;
+    const group = f.group && f.group !== 'workingTree' ? (GIT_GROUP[f.group] || '') : '';
+    const tag = [f.status, group].filter(Boolean).join(' · ');
+    const name = (multi && f.root ? f.root + '/' : '') + f.path;
+    return `<button class="opt" data-gitpath="${esc(f.path)}" data-gitgroup="${esc(f.group || '')}"><span class="lbl">${esc(name)}`
+      + `${counts}${tag ? `<span class="sub">${esc(tag)}</span>` : ''}</span></button>`;
+  }).join('') + '<div class="hint">绿色是这次多出来的行，红色是这次删掉的行，对照的是上次提交。</div>');
+}
+
+function askGit() {
+  if (gitState && !gitState.error) showGit(gitState);
+  else { status('正在读取提交改动…'); gitWantSheet = true; }
+  gitLoading = true;
+  send({ t: 'git' });
+}
+
+function onGit(m) {
+  gitLoading = false;
+  gitState = m;
+  paintGit();
+  if (m.error) {
+    gitWantSheet = false;
+    if (sheetKind === 'git') closeSheet();
+    return status(m.error, false);
+  }
+  if (sheetKind === 'git' || gitWantSheet) showGit(m);
+  gitWantSheet = false;
 }
 
 function showChanges(m) {
@@ -852,6 +926,7 @@ $('sheet').addEventListener('click', async e => {
   if (b.dataset.win) { closeSheet(); return send({ t: 'attach', id: b.dataset.win }); }
   if (b.dataset.kind) { closeSheet(); status('切换中…'); return send({ t: 'pickMenu', kind: b.dataset.kind, label: b.dataset.label }); }
   if (b.dataset.chopen) { closeSheet(); return openFile(b.dataset.chopen); }
+  if (b.dataset.gitpath) { closeSheet(); return openGitDiff(b.dataset.gitpath, b.dataset.gitgroup || ''); }
   if (b.dataset.ch) {
     const undo = b.dataset.act2 === 'undo';
     if (undo && !await ask(`撤销「${b.dataset.name}」的改动？\n文件会恢复成 Agent 改之前的样子。`, '撤销')) return send({ t: 'changes' });
@@ -1049,14 +1124,18 @@ function paintTree() {
   }
 }
 $('treeRefresh').onclick = () => refreshTree();
+$('gitRow').onclick = () => askGit();
 
 /* ---------- chat view ---------- */
 const list = $('list'), itemsEl = $('items');
 const cache = new Map();
 
-function buttonsHtml(labels, item) {
-  return labels.map((l, n) =>
-    `<button class="${PRIMARY.test(l) ? 'primary' : ''}" data-item="${esc(item)}" data-n="${n}">${esc(l)}</button>`).join('');
+function buttonsHtml(labels, item, files) {
+  return labels.map((l, n) => {
+    const ref = files?.[n] || '';
+    const shown = ref ? `${l} ${ref.split('/').pop()}` : l;
+    return `<button class="${PRIMARY.test(l) ? 'primary' : ''}" data-item="${esc(item)}" data-n="${n}"${ref ? ` data-fileref="${esc(ref)}"` : ''}>${esc(shown)}</button>`;
+  }).join('');
 }
 
 function renderItem(it) {
@@ -1070,7 +1149,7 @@ function renderItem(it) {
     if (it.f) el.dataset.file = it.f;
   }
   else el.textContent = it.t || '';
-  if (it.b && it.k !== 'human') el.insertAdjacentHTML('beforeend', `<div class="btns">${buttonsHtml(it.b, it.i)}</div>`);
+  if (it.b && it.k !== 'human') el.insertAdjacentHTML('beforeend', `<div class="btns">${buttonsHtml(it.b, it.i, it.bf)}</div>`);
   return el;
 }
 
@@ -1174,6 +1253,8 @@ function renderQueue(busy, queued, subs = [], readonly = false, changed = 0) {
       + `<button data-q="${esc(q.id)}" data-a="send" title="打断当前这一轮，立刻发送">立即发送</button>`
       + `<button data-q="${esc(q.id)}" data-a="remove">删除</button></div>`).join('');
   }
+  const gitText = gitLabel();
+  if (gitText) html += `<button class="qh fold" data-git>${esc(gitText)}</button>`;
   if (changed && !readonly) html += `<button class="qh fold" data-changes>改动了 ${changed} 个文件 ›</button>`;
   bar.innerHTML = html;
   bar.classList.toggle('show', Boolean(html));
@@ -1198,6 +1279,7 @@ function editQueued(id) {
 $('queueBar').onclick = async e => {
   const b = e.target.closest('button');
   if (!b) return;
+  if ('git' in b.dataset) return askGit();
   if ('changes' in b.dataset) { status('读取改动的文件…'); return send({ t: 'changes' }); }
   if ('fold' in b.dataset) { subsOpen = !subsOpen; return renderQueue(lastChat?.busy, lastChat?.queued || [], lastChat?.subagents || [], lastChat?.readonly, lastChat?.changed); }
   if ('stop' in b.dataset) {
@@ -1231,6 +1313,7 @@ document.addEventListener('click', async e => {
   const f = !b && e.target.closest('#items [data-file]');
   if (f) return openFile(f.dataset.file);
   if (!b) return;
+  if (b.dataset.fileref) return openFile(b.dataset.fileref);
   if (RISKY.test(b.textContent.trim()) && !await ask(`确定要点「${b.textContent.trim()}」吗？`, b.textContent.trim())) return;
   send({ t: 'click', item: b.dataset.item, n: Number(b.dataset.n) });
   status('已点击：' + b.textContent);
@@ -1245,8 +1328,19 @@ $('newChat').onclick = () => { send({ t: 'newChat' }); status('已新建对话')
 $('vBody').classList.toggle('wrap', store.get('wrap') !== 'off');
 $('vWrap').classList.toggle('on', store.get('wrap') !== 'off');
 
+function openGitDiff(filePath, group) {
+  $('vName').textContent = String(filePath || '').split('/').pop();
+  $('vPath').textContent = '\u200e' + filePath;
+  $('vBody').innerHTML = `<div class="note">${esc(I18N.tr('正在读取改动…'))}</div>`;
+  if (!$('viewer').classList.contains('open')) {
+    $('viewer').classList.add('open');
+    history.pushState({ viewer: true }, '');
+  }
+  send({ t: 'gitdiff', path: filePath, group });
+}
+
 function openFile(ref) {
-  $('vName').textContent = ref.split('/').pop();
+  $('vName').textContent = ref.split('/').pop().replace(/(?::\d+.*|#L\d+.*)$/, '');
   $('vPath').textContent = '';
   $('vBody').innerHTML = '<div class="note">正在从电脑读取…</div>';
   if (!$('viewer').classList.contains('open')) {
@@ -1263,7 +1357,7 @@ function showFile(m) {
   $('vPath').textContent = m.path ? '\u200e' + (m.host ? m.host + ':' : '') + m.path + (m.size != null ? ` · ${fmtSize(m.size)}` : '') : '';
   const body = $('vBody');
   if (m.error) {
-    body.innerHTML = `<div class="note err">${esc(m.error)}</div><div class="note">可以切到「画面」在 Cursor 里打开</div>`;
+    body.innerHTML = `<div class="note err">${esc(I18N.tr(m.error))}</div><div class="note">${esc(I18N.tr('可以切到「画面」在 Cursor 里打开'))}</div>`;
     return;
   }
   if (m.image) {
@@ -1271,6 +1365,18 @@ function showFile(m) {
     const img = new Image();
     img.src = m.image;
     body.append(img);
+    return;
+  }
+  if (m.hunks) {
+    const rows = m.hunks.map(h => {
+      if (h.t === 'skip') return `<div class="l skip"><i>…</i>${esc(I18N.tr(`省略 ${Number(h.n) || 0} 行未改动`))}</div>`;
+      const mark = h.t === 'add' ? '+' : h.t === 'del' ? '−' : ' ';
+      return `<div class="l ${h.t === 'add' || h.t === 'del' || h.t === 'same' ? h.t : 'same'}"><i>${mark}</i>${esc(h.s) || ' '}</div>`;
+    }).join('');
+    body.innerHTML = (rows ? `<div class="code">${rows}</div>` : '')
+      + (m.hunks.length ? '' : `<div class="note">${esc(I18N.tr('这两份内容一样'))}</div>`)
+      + (m.truncated ? `<div class="note">${esc(I18N.tr('改动太长，只显示了前面一部分'))}</div>` : '');
+    body.scrollTop = 0;
     return;
   }
   const lines = m.text.replace(/\n$/, '').split('\n');
