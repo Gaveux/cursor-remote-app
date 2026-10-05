@@ -5,7 +5,7 @@ const I18N = (() => {
   const lang = saved === 'zh' || saved === 'en' ? saved : /^zh\b/i.test(navigator.language || '') ? 'zh' : 'en';
 
   const EN = {
-    '连接中…': 'Connecting…', '对话': 'Chat', '文件': 'Files', '画面': 'Screen', '↑ 加载更早的消息': '↑ Load earlier messages',
+    '连接中…': 'Connecting…', '对话': 'Chat', '文件': 'Files', '终端': 'Terminal', '画面': 'Screen', '↑ 加载更早的消息': '↑ Load earlier messages',
     '项目': 'Project', '正在读取项目…': 'Reading the project…', '空文件夹': 'Empty folder', '只显示了前 2000 项': 'Showing the first 2,000 entries',
     '找不到这个窗口对应的项目文件夹': 'No project folder for this window', '路径越界': 'Path is outside the project',
     '远程项目的文件服务还不可用': 'The remote project is not ready to list files yet', '读取远程文件超时': 'Timed out reading the remote file',
@@ -22,6 +22,9 @@ const I18N = (() => {
     '绿色是这次多出来的行，红色是这次删掉的行，对照的是上次提交。': 'Green lines were added and red lines were removed, compared with the last commit.',
     '已修改': 'Modified', '新增': 'Added', '已删除': 'Deleted', '重命名': 'Renamed', '未跟踪': 'Untracked', '已复制': 'Copied', '冲突': 'Conflict',
     '已暂存': 'Staged', '未暂存': 'Unstaged',
+    '正在读取终端…': 'Reading the terminal…', '这个窗口还没有打开终端': 'No terminal is open in this window',
+    '终端还在启动…': 'The terminal is still starting…', '更早的输出已省略': 'Earlier output is hidden',
+    '这个子 Agent 没有单独的终端，下面是这个窗口里的终端': 'That subagent has no terminal of its own. Showing the terminals in this window.',
     '没找到聊天面板。': 'No chat panel found.', '请在 Cursor 里打开 Agent 对话，或切到「画面」查看。': 'Open an Agent chat in Cursor, or switch to "Screen".',
     '↓ 最新': '↓ Latest', '聊天面板': 'Chat panel', '整个窗口': 'Whole window', '点击': 'Tap', '滚动': 'Scroll', '刷新': 'Refresh',
     '回车': 'Enter', '⌘回车': '⌘Enter', '打开聊天': 'Open chat', '右键': 'Right-click', '历史': 'History', '＋ 新建': '+ New',
@@ -76,6 +79,7 @@ const I18N = (() => {
     '(空)': '(empty)', '这条排队消息已经不在了': 'That queued message is gone', '修改排队消息': 'Edit queued message', '保存（仍在排队）': 'Save (stays queued)',
     '内容不能为空；不想要这条就点「删除」': 'The message cannot be empty; use "Delete" to drop it', '正在修改排队消息…': 'Updating queued message…',
     '已停止 Agent': 'Agent stopped', '返回主对话…': 'Returning to main chat…', '已停止子 Agent': 'Subagent stopped', '正在打开子 Agent…': 'Opening subagent…',
+    '修改刚才的请求': 'Edit the last request', '先不改': 'Not now', '已放回输入框，改完点发送': 'Back in the box. Edit it, then send',
     '已立即发送这条排队消息': 'Queued message sent now', '已删除这条排队消息': 'Queued message deleted',
     '读取模式列表…': 'Loading modes…', '读取模型列表…': 'Loading models…', '读取历史对话…': 'Loading chat history…', '已新建对话': 'New chat started',
     '正在从电脑读取…': 'Reading from the computer…', '可以切到「画面」在 Cursor 里打开': 'You can open it in Cursor from the "Screen" tab',
@@ -137,6 +141,7 @@ const I18N = (() => {
     [/^排队中 (\d+) 条$/, 'Queued: $1'],
     [/^停止子 Agent「(.+)」？$/, 'Stop subagent "$1"?'],
     [/^❓ Agent 在问你（(\d+) 个问题）$/, '❓ The Agent is asking you ($1 questions)'],
+    [/^已退出（代码 (-?\d+)）$/, 'Exited (code $1)'],
     [/^改动了 1 个文件 ›$/, '1 file changed ›'],
     [/^改动了 (\d+) 个文件 ›$/, '$1 files changed ›'],
     [/^相对上次提交改了 1 个文件 ›$/, '1 file changed since the last commit ›'],
@@ -172,7 +177,7 @@ const I18N = (() => {
   const tr = s => lang === 'zh' || s == null ? s : String(s).split('\n').map(line).join('\n');
 
   // Content mirrored from Cursor or the computer's files is never translated.
-  const SKIP = '#items, #vBody, #vName, #vPath, #titleText, .treeName, .qt, [data-label] .lbl, [data-win] .lbl, .qnQ, .qnOpt span';
+  const SKIP = '#items, #vBody, #vName, #vPath, #titleText, .treeName, .qt, [data-label] .lbl, [data-win] .lbl, .qnQ, .qnOpt span, #termOut, #termTabs, #termCwd';
   const ATTRS = ['placeholder', 'title', 'aria-label'];
   const fix = node => {
     if (node.nodeType === 3) {
