@@ -1222,7 +1222,8 @@ screen.addEventListener('pointermove', e => {
     const scale = frame.w / screen.getBoundingClientRect().width;
     const dy = (down.lastY - e.clientY) * scale * 1.5, dx = (down.lastX - e.clientX) * scale * 1.5;
     down.lastY = e.clientY; down.lastX = e.clientX;
-    const p = norm(down);
+    // down stores x/y. norm() reads clientX/clientY, so passing down sent the wheel to the window corner.
+    const p = norm({ clientX: down.x, clientY: down.y });
     send({ t: 'wheel', x: p.x, y: p.y, dx, dy });
   }
 });
