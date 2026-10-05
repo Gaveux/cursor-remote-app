@@ -1212,23 +1212,38 @@ function ripple(e) {
 }
 
 let down = null;
+let wheelFrame = 0;
+function flushWheel() {
+  wheelFrame = 0;
+  if (!down) return;
+  const dx = down.accX, dy = down.accY;
+  down.accX = 0; down.accY = 0;
+  if (!dx && !dy) return;
+  const p = norm({ clientX: down.x, clientY: down.y });
+  send({ t: 'wheel', x: p.x, y: p.y, dx, dy });
+}
 screen.addEventListener('pointerdown', e => {
-  down = { x: e.clientX, y: e.clientY, t: Date.now(), lastY: e.clientY, lastX: e.clientX, moved: false };
-});
+  if (tapMode === 'scroll') {
+    e.preventDefault();
+    try { screen.setPointerCapture(e.pointerId); } catch {}
+  }
+  down = { x: e.clientX, y: e.clientY, t: Date.now(), lastY: e.clientY, lastX: e.clientX, moved: false, accX: 0, accY: 0 };
+}, { passive: false });
 screen.addEventListener('pointermove', e => {
   if (!down) return;
-  if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 10) down.moved = true;
+  if (tapMode === 'scroll') e.preventDefault();
+  if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8) down.moved = true;
   if (tapMode === 'scroll' && down.moved) {
-    const scale = frame.w / screen.getBoundingClientRect().width;
-    const dy = (down.lastY - e.clientY) * scale * 1.5, dx = (down.lastX - e.clientX) * scale * 1.5;
+    const scale = frame.w / (screen.getBoundingClientRect().width || frame.w);
+    down.accY += (down.lastY - e.clientY) * scale * 2;
+    down.accX += (down.lastX - e.clientX) * scale * 2;
     down.lastY = e.clientY; down.lastX = e.clientX;
-    // down stores x/y. norm() reads clientX/clientY, so passing down sent the wheel to the window corner.
-    const p = norm({ clientX: down.x, clientY: down.y });
-    send({ t: 'wheel', x: p.x, y: p.y, dx, dy });
+    if (!wheelFrame) wheelFrame = requestAnimationFrame(flushWheel);
   }
-});
+}, { passive: false });
 screen.addEventListener('pointerup', e => {
   if (!down) return;
+  if (wheelFrame) { cancelAnimationFrame(wheelFrame); flushWheel(); }
   const longPress = Date.now() - down.t > 600;
   if (!down.moved) {
     const p = norm(e);
@@ -1239,7 +1254,7 @@ screen.addEventListener('pointerup', e => {
   }
   down = null;
 });
-screen.addEventListener('pointercancel', () => { down = null; });
+screen.addEventListener('pointercancel', () => { if (wheelFrame) cancelAnimationFrame(wheelFrame); wheelFrame = 0; down = null; });
 screen.addEventListener('contextmenu', e => e.preventDefault());
 
 function setTapMode(m) {
@@ -1264,7 +1279,21 @@ $('zoom').onclick = () => {
 };
 $('refresh').onclick = () => send({ t: 'refresh' });
 $('rightClick').onclick = () => { rightNext = !rightNext; $('rightClick').classList.toggle('on', rightNext); };
-document.querySelectorAll('[data-key]').forEach(b => b.onclick = () => send({ t: 'key', key: b.dataset.key }));
+function visibleCenter() {
+  const r = stage.getBoundingClientRect();
+  return norm({ clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 });
+}
+document.querySelectorAll('[data-key]').forEach(b => b.onclick = () => {
+  // In scroll mode the arrows move the panel under the picture by most of a screen.
+  // Outside that mode they stay ordinary ArrowUp / ArrowDown keys.
+  if (tapMode === 'scroll' && (b.dataset.key === 'ArrowUp' || b.dataset.key === 'ArrowDown')) {
+    const p = visibleCenter();
+    const dy = (b.dataset.key === 'ArrowDown' ? 1 : -1) * cropRect()[3] * 0.72;
+    send({ t: 'wheel', x: p.x, y: p.y, dx: 0, dy });
+    return;
+  }
+  send({ t: 'key', key: b.dataset.key });
+});
 
 /* ---------- composer ---------- */
 const text = $('text');
