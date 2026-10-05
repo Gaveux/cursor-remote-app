@@ -1367,6 +1367,20 @@ function showFile(m) {
     body.append(img);
     return;
   }
+  if (m.diff) {
+    let n = 0;
+    const rows = m.diff.map(h => {
+      if (h.t === 'del') return `<div class="l del"><i>−</i>${esc(h.s) || ' '}</div>`;
+      n += 1;
+      const kind = h.t === 'add' ? ' add' : '';
+      return `<div class="l${kind}${n === m.line ? ' hl' : ''}"><i>${n}</i>${esc(h.s) || ' '}</div>`;
+    }).join('');
+    body.innerHTML = `<div class="code">${rows}</div><div class="note">${esc(I18N.tr('绿色是这次多出来的行，红色是这次删掉的行，对照的是上次提交。'))}</div>`;
+    const target = body.querySelector('.hl') || body.querySelector('.add, .del');
+    if (target) target.scrollIntoView({ block: 'center' });
+    else body.scrollTop = 0;
+    return;
+  }
   if (m.hunks) {
     const rows = m.hunks.map(h => {
       if (h.t === 'skip') return `<div class="l skip"><i>…</i>${esc(I18N.tr(`省略 ${Number(h.n) || 0} 行未改动`))}</div>`;
