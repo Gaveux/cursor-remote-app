@@ -123,15 +123,6 @@
   #queueBar .run.sub { color: #e5c07b; }
   #queueBar button { font-size: 12px; padding: 3px 9px; flex: none; }
 
-  /* screen view */
-  .tools { flex: none; display: flex; gap: 6px; padding: 6px 8px; overflow-x: auto; scrollbar-width: none; background: #252526; border-bottom: 1px solid #333; min-width: 0; }
-  .tools::-webkit-scrollbar { display: none; }
-  #view { flex: 1; min-height: 0; overflow: auto; background: #111; -webkit-overflow-scrolling: touch; }
-  #stage { position: relative; overflow: hidden; margin: 0 auto; }
-  #screen { position: absolute; left: 0; top: 0; max-width: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: pan-x pan-y; }
-  #view.scroll #screen { touch-action: none; }
-  #ripple { position: absolute; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; border: 2px solid #4af; pointer-events: none; opacity: 0; transition: opacity .4s; }
-
   /* composer */
   footer { flex: none; background: #252526; border-top: 1px solid #333; padding: 6px 10px 8px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
   #chatTools { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; min-width: 0; }
@@ -231,7 +222,6 @@
     <button id="tabChat" class="on">对话</button>
     <button id="tabFiles">文件</button>
     <button id="tabTerm">终端</button>
-    <button id="tabScreen">画面</button>
   </div>
   <button id="menuBtn">⋯</button>
 </header>
@@ -241,7 +231,7 @@
     <div id="list">
       <button id="older">↑ 加载更早的消息</button>
       <div id="items"></div>
-      <div id="empty" hidden>没找到聊天面板。<br>请在 Cursor 里打开 Agent 对话，或切到「画面」查看。</div>
+      <div id="empty" hidden>没找到聊天面板。<br>请在电脑上的 Cursor 里打开 Agent 对话。</div>
     </div>
     <button id="toBottom">↓ 最新</button>
     <div id="qnBar"></div>
@@ -266,28 +256,6 @@
     <div id="termNote" hidden></div>
   </section>
 
-  <section id="screenView" class="view">
-    <div class="tools">
-      <button id="cropPanel" class="on">聊天面板</button>
-      <button id="cropFull">整个窗口</button>
-      <button id="modeTap" class="on">点击</button>
-      <button id="modeScroll">滚动</button>
-      <button id="zoom">1x</button>
-      <button id="refresh">刷新</button>
-    </div>
-    <div id="view"><div id="stage"><img id="screen" alt=""><div id="ripple"></div></div></div>
-    <div class="tools">
-      <button data-key="Escape">Esc</button>
-      <button data-key="Enter">回车</button>
-      <button data-key="Meta+Enter">⌘回车</button>
-      <button data-key="ArrowUp">↑</button>
-      <button data-key="ArrowDown">↓</button>
-      <button data-key="Tab">Tab</button>
-      <button data-key="Backspace">⌫</button>
-      <button data-key="Meta+l">打开聊天</button>
-      <button id="rightClick">右键</button>
-    </div>
-  </section>
 </main>
 
 <footer>
@@ -342,8 +310,6 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 let base = null, info = null, ws = null, authed = false, failures = 0;
 let mode = store.get('mode') || 'chat';
-let crop = store.get('crop') !== 'full';
-let frame = { w: 1000, h: 800 }, panel = null, zoom = 1, tapMode = 'tap', rightNext = false;
 let windows = [], currentWindow = null;
 
 // Keep the layout above the on-screen keyboard.
@@ -600,16 +566,12 @@ function connect() {
       const fromNotice = window.CursorRemoteApp?.takeOpenWin?.();
       if (fromNotice) store.set('window', fromNotice);
       send({ t: 'attach', id: store.get('window') || '' });
-      sentWidth = 0;
-      applyQuality();
       send({ t: 'visible', v: document.visibilityState === 'visible' });
       send({ t: 'lang', v: I18N.lang });
       syncNotify();
       setTimeout(checkAppUpdate, 3000);
     }
     else if (m.t === 'chat') renderChat(m.chat);
-    else if (m.t === 'frame') onFrame(m);
-    else if (m.t === 'panel') { panel = m.rect; layoutStage(); applyQuality(); }
     else if (m.t === 'windows') { windows = m.list; currentWindow = m.current; if (sheetKind === 'windows') showWindows(); }
     else if (m.t === 'attached') {
       store.set('window', m.id);
@@ -1017,20 +979,17 @@ $('sheet').addEventListener('click', async e => {
 
 /* ---------- mode switching ---------- */
 function setMode(m, extra) {
-  mode = m === 'files' || m === 'screen' || m === 'term' ? m : 'chat';
+  mode = m === 'files' || m === 'term' ? m : 'chat';
   store.set('mode', mode);
   $('tabChat').classList.toggle('on', mode === 'chat');
   $('tabFiles').classList.toggle('on', mode === 'files');
   $('tabTerm').classList.toggle('on', mode === 'term');
-  $('tabScreen').classList.toggle('on', mode === 'screen');
   $('chatView').classList.toggle('active', mode === 'chat');
   $('filesView').classList.toggle('active', mode === 'files');
   $('termView').classList.toggle('active', mode === 'term');
-  $('screenView').classList.toggle('active', mode === 'screen');
   $('chatTools').hidden = mode !== 'chat';
   document.querySelector('footer .row').hidden = mode === 'files' || mode === 'term';
   if (authed) send({ t: 'mode', mode: mode === 'files' ? 'chat' : mode, ...(mode === 'term' && extra ? extra : {}) });
-  if (mode === 'screen') { layoutStage(); applyQuality(); }
   if (mode === 'term') {
     termStick = true;
     if (!$('termTabs').children.length) {
@@ -1052,7 +1011,6 @@ function setMode(m, extra) {
 $('tabChat').onclick = () => setMode('chat');
 $('tabFiles').onclick = () => setMode('files');
 $('tabTerm').onclick = () => setMode('term');
-$('tabScreen').onclick = () => setMode('screen');
 
 /* ---------- terminal ---------- */
 let termStick = true, termTabSig = '';
@@ -1513,7 +1471,7 @@ function showFile(m) {
   $('vPath').textContent = m.path ? '\u200e' + (m.host ? m.host + ':' : '') + m.path + (m.size != null ? ` · ${fmtSize(m.size)}` : '') : '';
   const body = $('vBody');
   if (m.error) {
-    body.innerHTML = `<div class="note err">${esc(I18N.tr(m.error))}</div><div class="note">${esc(I18N.tr('可以切到「画面」在 Cursor 里打开'))}</div>`;
+    body.innerHTML = `<div class="note err">${esc(I18N.tr(m.error))}</div><div class="note">${esc(I18N.tr('可以在电脑上的 Cursor 里打开'))}</div>`;
     return;
   }
   if (m.image) {
@@ -1571,149 +1529,6 @@ $('vWrap').onclick = () => {
   $('vWrap').classList.toggle('on', on);
   store.set('wrap', on ? null : 'off');
 };
-
-/* ---------- screen view ---------- */
-const view = $('view'), stage = $('stage'), screen = $('screen');
-
-function onFrame(m) {
-  const resized = m.w !== frame.w || m.h !== frame.h;
-  frame = { w: m.w, h: m.h };
-  screen.src = 'data:image/jpeg;base64,' + m.data;
-  layoutStage();
-  if (resized) applyQuality();
-}
-screen.onload = () => send({ t: 'ack' });
-
-const cropRect = () => crop && panel ? panel : [0, 0, frame.w, frame.h];
-
-function layoutStage() {
-  if (mode !== 'screen') return;
-  const [rx, ry, rw, rh] = cropRect();
-  const stageW = view.clientWidth * zoom;
-  const scale = stageW / rw;
-  stage.style.width = stageW + 'px';
-  stage.style.height = rh * scale + 'px';
-  screen.style.width = frame.w * scale + 'px';
-  screen.style.left = -rx * scale + 'px';
-  screen.style.top = -ry * scale + 'px';
-}
-
-let sentWidth = 0;
-function applyQuality() {
-  if (mode !== 'screen' || !authed) return;
-  const [, , rw] = cropRect();
-  const px = Math.min(2560, Math.round(view.clientWidth * zoom * devicePixelRatio * frame.w / rw));
-  if (Math.abs(px - sentWidth) < 40) return;
-  sentWidth = px;
-  send({ t: 'quality', quality: 70, maxWidth: px });
-}
-
-function setCrop(on) {
-  crop = on;
-  store.set('crop', on ? 'panel' : 'full');
-  $('cropPanel').classList.toggle('on', on);
-  $('cropFull').classList.toggle('on', !on);
-  layoutStage(); applyQuality();
-}
-$('cropPanel').onclick = () => setCrop(true);
-$('cropFull').onclick = () => setCrop(false);
-
-function norm(e) {
-  const r = screen.getBoundingClientRect();
-  return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
-}
-
-function ripple(e) {
-  const r = stage.getBoundingClientRect(), el = $('ripple');
-  el.style.left = (e.clientX - r.left) + 'px';
-  el.style.top = (e.clientY - r.top) + 'px';
-  el.style.transition = 'none'; el.style.opacity = 1;
-  requestAnimationFrame(() => { el.style.transition = 'opacity .4s'; el.style.opacity = 0; });
-}
-
-let down = null;
-let wheelFrame = 0;
-function flushWheel() {
-  wheelFrame = 0;
-  if (!down) return;
-  const dx = down.accX, dy = down.accY;
-  down.accX = 0; down.accY = 0;
-  if (!dx && !dy) return;
-  const p = norm({ clientX: down.x, clientY: down.y });
-  send({ t: 'wheel', x: p.x, y: p.y, dx, dy });
-}
-screen.addEventListener('pointerdown', e => {
-  if (tapMode === 'scroll') {
-    e.preventDefault();
-    try { screen.setPointerCapture(e.pointerId); } catch {}
-  }
-  down = { x: e.clientX, y: e.clientY, t: Date.now(), lastY: e.clientY, lastX: e.clientX, moved: false, accX: 0, accY: 0 };
-}, { passive: false });
-screen.addEventListener('pointermove', e => {
-  if (!down) return;
-  if (tapMode === 'scroll') e.preventDefault();
-  if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8) down.moved = true;
-  if (tapMode === 'scroll' && down.moved) {
-    const scale = frame.w / (screen.getBoundingClientRect().width || frame.w);
-    down.accY += (down.lastY - e.clientY) * scale * 2;
-    down.accX += (down.lastX - e.clientX) * scale * 2;
-    down.lastY = e.clientY; down.lastX = e.clientX;
-    if (!wheelFrame) wheelFrame = requestAnimationFrame(flushWheel);
-  }
-}, { passive: false });
-screen.addEventListener('pointerup', e => {
-  if (!down) return;
-  if (wheelFrame) { cancelAnimationFrame(wheelFrame); flushWheel(); }
-  const longPress = Date.now() - down.t > 600;
-  if (!down.moved) {
-    const p = norm(e);
-    const button = rightNext || longPress ? 'right' : 'left';
-    rightNext = false; $('rightClick').classList.remove('on');
-    send({ t: 'tap', x: p.x, y: p.y, button });
-    ripple(e);
-  }
-  down = null;
-});
-screen.addEventListener('pointercancel', () => { if (wheelFrame) cancelAnimationFrame(wheelFrame); wheelFrame = 0; down = null; });
-screen.addEventListener('contextmenu', e => e.preventDefault());
-
-function setTapMode(m) {
-  tapMode = m;
-  $('modeTap').classList.toggle('on', m === 'tap');
-  $('modeScroll').classList.toggle('on', m === 'scroll');
-  view.classList.toggle('scroll', m === 'scroll');
-}
-$('modeTap').onclick = () => setTapMode('tap');
-$('modeScroll').onclick = () => setTapMode('scroll');
-
-const ZOOMS = [1, 1.5, 2, 3];
-$('zoom').onclick = () => {
-  const cx = (view.scrollLeft + view.clientWidth / 2) / (view.scrollWidth || 1);
-  const cy = (view.scrollTop + view.clientHeight / 2) / (view.scrollHeight || 1);
-  zoom = ZOOMS[(ZOOMS.indexOf(zoom) + 1) % ZOOMS.length];
-  $('zoom').textContent = zoom + 'x';
-  layoutStage();
-  view.scrollLeft = cx * view.scrollWidth - view.clientWidth / 2;
-  view.scrollTop = cy * view.scrollHeight - view.clientHeight / 2;
-  applyQuality();
-};
-$('refresh').onclick = () => send({ t: 'refresh' });
-$('rightClick').onclick = () => { rightNext = !rightNext; $('rightClick').classList.toggle('on', rightNext); };
-function visibleCenter() {
-  const r = stage.getBoundingClientRect();
-  return norm({ clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 });
-}
-document.querySelectorAll('[data-key]').forEach(b => b.onclick = () => {
-  // In scroll mode the arrows move the panel under the picture by most of a screen.
-  // Outside that mode they stay ordinary ArrowUp / ArrowDown keys.
-  if (tapMode === 'scroll' && (b.dataset.key === 'ArrowUp' || b.dataset.key === 'ArrowDown')) {
-    const p = visibleCenter();
-    const dy = (b.dataset.key === 'ArrowDown' ? 1 : -1) * cropRect()[3] * 0.72;
-    send({ t: 'wheel', x: p.x, y: p.y, dx: 0, dy });
-    return;
-  }
-  send({ t: 'key', key: b.dataset.key });
-});
 
 /* ---------- composer ---------- */
 const text = $('text');
@@ -1796,10 +1611,8 @@ $('mic').onclick = () => {
   status('请说话…（再点一下结束）');
 };
 
-window.addEventListener('resize', () => { layoutStage(); applyQuality(); });
 if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('sw.js').catch(() => {});
 
-setCrop(crop);
 setMode(mode);
 boot();
 </script>
