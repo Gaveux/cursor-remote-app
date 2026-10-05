@@ -31,8 +31,9 @@
   #title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px; background: none; border: none; padding: 4px 2px; text-align: left; color: #ccc; font-size: 14px; }
   #title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #title::after { content: "▾"; color: #888; flex: none; }
-  .seg { display: flex; flex: none; border: 1px solid #3c3c3c; border-radius: 8px; overflow: hidden; }
-  .seg button { border: none; border-radius: 0; padding: 5px 8px; background: #2d2d2d; }
+  .seg { display: flex; flex: none; max-width: 68%; border: 1px solid #3c3c3c; border-radius: 8px; overflow-x: auto; scrollbar-width: none; }
+  .seg::-webkit-scrollbar { display: none; }
+  .seg button { border: none; border-radius: 0; padding: 5px 7px; background: #2d2d2d; }
   .seg button.on { background: #0e639c; }
   #menuBtn { flex: none; padding: 5px 10px; }
 
@@ -57,6 +58,7 @@
   .assistant blockquote { margin: 0 0 .6em; padding-left: 10px; border-left: 3px solid #555; color: #aaa; }
   .tool { font: 12.5px/1.4 ui-monospace, Menlo, monospace; color: #9da5b4; background: #252526; border: 1px solid #303030; border-radius: 8px; padding: 6px 9px; }
   .tool .txt { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .tool .txt.out { display: block; -webkit-line-clamp: unset; white-space: pre-wrap; max-height: 36vh; overflow: auto; margin-top: 4px; }
   .thinking, .other { font-size: 12px; color: #777; padding-left: 2px; }
   .btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
   .btns button { font-size: 13px; padding: 5px 10px; }
@@ -73,6 +75,18 @@
   .treeName { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 14px/1.3 ui-monospace, Menlo, monospace; }
   .treeRow.dir .treeName { color: #eee; }
   .treeNote { color: #888; padding: 18px 16px; }
+  #termBar { flex: none; display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: #252526; border-bottom: 1px solid #333; min-width: 0; }
+  #termTabs { flex: 1; min-width: 0; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+  #termTabs::-webkit-scrollbar { display: none; }
+  #termTabs button { flex: none; max-width: 46vw; overflow: hidden; text-overflow: ellipsis; font-size: 13px; padding: 4px 10px; }
+  #termRefresh { flex: none; padding: 4px 10px; font-size: 13px; }
+  #termMeta { flex: none; display: flex; gap: 8px; align-items: center; padding: 4px 12px; background: #1a1a1a; border-bottom: 1px solid #2a2a2a; min-width: 0; font: 11px/1.4 ui-monospace, Menlo, monospace; color: #888; }
+  #termCwd { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+  #termExit { flex: none; color: #e5c07b; }
+  #termCut { flex: none; padding: 4px 12px; font-size: 12px; color: #888; background: #252526; }
+  #termScroll { flex: 1; min-height: 0; overflow: auto; background: #111; -webkit-overflow-scrolling: touch; }
+  #termOut { margin: 0; padding: 8px 10px 28px; color: #d4d4d4; font: 12px/1.45 ui-monospace, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+  #termNote { color: #888; text-align: center; margin-top: 28vh; padding: 0 24px; line-height: 1.6; }
   #toBottom { position: absolute; right: 14px; bottom: 12px; border-radius: 20px; padding: 6px 12px; background: #333d; display: none; }
   #actionBar { flex: none; display: none; gap: 8px; flex-wrap: wrap; padding: 8px 12px; background: #2a2d2e; border-top: 1px solid #333; }
   #actionBar.show { display: flex; }
@@ -105,6 +119,7 @@
   #queueBar .q .qt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #ccc; }
   #queueBar .q .qt::before { content: "○ "; color: #777; }
   #queueBar .q .qt.sa::before { content: "⇢ "; color: #4af; }
+  #queueBar .q .qt.req::before { content: "✎ "; color: #e5c07b; }
   #queueBar .run.sub { color: #e5c07b; }
   #queueBar button { font-size: 12px; padding: 3px 9px; flex: none; }
 
@@ -215,6 +230,7 @@
   <div class="seg">
     <button id="tabChat" class="on">对话</button>
     <button id="tabFiles">文件</button>
+    <button id="tabTerm">终端</button>
     <button id="tabScreen">画面</button>
   </div>
   <button id="menuBtn">⋯</button>
@@ -237,6 +253,17 @@
     <div id="treeBar"><span id="treeRoot">项目</span><button id="treeRefresh" type="button">刷新</button></div>
     <button id="gitRow" type="button" hidden></button>
     <div id="tree"></div>
+  </section>
+
+  <section id="termView" class="view">
+    <div id="termBar">
+      <div id="termTabs"></div>
+      <button id="termRefresh" type="button">刷新</button>
+    </div>
+    <div id="termMeta" hidden><span id="termCwd"></span><span id="termExit" hidden></span></div>
+    <div id="termCut" hidden>更早的输出已省略</div>
+    <div id="termScroll"><pre id="termOut"></pre></div>
+    <div id="termNote" hidden></div>
   </section>
 
   <section id="screenView" class="view">
@@ -594,10 +621,14 @@ function connect() {
       gitState = null;
       gitLoading = true;
       gitWantSheet = false;
+      lastHumanRequest = '';
+      stoppedRequest = '';
       paintGit();
       send({ t: 'git' });
+      resetTerm();
     }
     else if (m.t === 'git') onGit(m);
+    else if (m.t === 'term') renderTerm(m);
     else if (m.t === 'tree') renderTree(m);
     else if (m.t === 'menu') showMenu(m.kind, m.items, m.max);
     else if (m.t === 'params') showParams(m);
@@ -985,19 +1016,29 @@ $('sheet').addEventListener('click', async e => {
 });
 
 /* ---------- mode switching ---------- */
-function setMode(m) {
-  mode = m === 'files' || m === 'screen' ? m : 'chat';
+function setMode(m, extra) {
+  mode = m === 'files' || m === 'screen' || m === 'term' ? m : 'chat';
   store.set('mode', mode);
   $('tabChat').classList.toggle('on', mode === 'chat');
   $('tabFiles').classList.toggle('on', mode === 'files');
+  $('tabTerm').classList.toggle('on', mode === 'term');
   $('tabScreen').classList.toggle('on', mode === 'screen');
   $('chatView').classList.toggle('active', mode === 'chat');
   $('filesView').classList.toggle('active', mode === 'files');
+  $('termView').classList.toggle('active', mode === 'term');
   $('screenView').classList.toggle('active', mode === 'screen');
   $('chatTools').hidden = mode !== 'chat';
-  document.querySelector('footer .row').hidden = mode === 'files';
-  if (authed) send({ t: 'mode', mode: mode === 'files' ? 'chat' : mode });
+  document.querySelector('footer .row').hidden = mode === 'files' || mode === 'term';
+  if (authed) send({ t: 'mode', mode: mode === 'files' ? 'chat' : mode, ...(mode === 'term' && extra ? extra : {}) });
   if (mode === 'screen') { layoutStage(); applyQuality(); }
+  if (mode === 'term') {
+    termStick = true;
+    if (!$('termTabs').children.length) {
+      $('termNote').hidden = false;
+      $('termNote').textContent = '正在读取终端…';
+      $('termScroll').hidden = true;
+    }
+  }
   if (mode === 'files' && !treeKids.has('')) {
     if (authed) loadTree('');
     else {
@@ -1010,7 +1051,89 @@ function setMode(m) {
 }
 $('tabChat').onclick = () => setMode('chat');
 $('tabFiles').onclick = () => setMode('files');
+$('tabTerm').onclick = () => setMode('term');
 $('tabScreen').onclick = () => setMode('screen');
+
+/* ---------- terminal ---------- */
+let termStick = true, termTabSig = '';
+function resetTerm() {
+  termStick = true;
+  termTabSig = '';
+  $('termTabs').replaceChildren();
+  $('termOut').textContent = '';
+  $('termCwd').textContent = '';
+  $('termExit').hidden = true;
+  $('termMeta').hidden = true;
+  $('termCut').hidden = true;
+  $('termScroll').hidden = mode !== 'term';
+  $('termNote').hidden = mode !== 'term';
+  if (mode === 'term') $('termNote').textContent = '正在读取终端…';
+}
+function renderTerm(m) {
+  const note = $('termNote');
+  if (!m || m.error || !m.terms || !m.terms.length) {
+    termTabSig = '';
+    $('termTabs').replaceChildren();
+    $('termOut').textContent = '';
+    $('termMeta').hidden = true;
+    $('termCut').hidden = true;
+    $('termScroll').hidden = true;
+    note.hidden = false;
+    note.textContent = (m && m.error) || '这个窗口还没有打开终端';
+    return;
+  }
+  note.hidden = true;
+  $('termScroll').hidden = false;
+  const sig = m.terms.map(t => `${t.id}\0${t.title}\0${t.exit ?? ''}`).join('\n');
+  if (sig !== termTabSig) {
+    termTabSig = sig;
+    $('termTabs').replaceChildren(...m.terms.map(t => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = t.title || '终端';
+      b.dataset.term = String(t.id);
+      b.classList.toggle('on', t.id === m.show);
+      return b;
+    }));
+  } else {
+    for (const b of $('termTabs').children) b.classList.toggle('on', Number(b.dataset.term) === m.show);
+  }
+  const shown = m.terms.find(t => t.id === m.show) || m.terms.find(t => 'text' in t) || m.terms[0];
+  $('termMeta').hidden = false;
+  $('termCwd').textContent = shown.cwd || '';
+  if (shown.exit == null) $('termExit').hidden = true;
+  else {
+    $('termExit').hidden = false;
+    $('termExit').textContent = `已退出（代码 ${shown.exit}）`;
+  }
+  const cut = $('termCut');
+  if (m.note) { cut.hidden = false; cut.textContent = m.note; }
+  else if (shown.truncated) { cut.hidden = false; cut.textContent = '更早的输出已省略'; }
+  else cut.hidden = true;
+  const out = $('termOut');
+  const text = shown.pending ? '' : (shown.text || '');
+  if (shown.pending) {
+    note.hidden = false;
+    note.textContent = '终端还在启动…';
+    $('termScroll').hidden = true;
+  }
+  if (out.textContent !== text) {
+    out.textContent = text;
+    if (termStick) $('termScroll').scrollTop = $('termScroll').scrollHeight;
+  }
+}
+$('termScroll').addEventListener('scroll', () => {
+  const el = $('termScroll');
+  termStick = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+});
+$('termTabs').onclick = e => {
+  const b = e.target.closest('[data-term]');
+  if (!b) return;
+  termStick = true;
+  for (const btn of $('termTabs').children) btn.classList.toggle('on', btn === b);
+  send({ t: 'term', id: Number(b.dataset.term) });
+};
+$('termRefresh').onclick = () => { termStick = true; send({ t: 'term' }); };
 
 /* ---------- project files ---------- */
 const treeKids = new Map();
@@ -1145,7 +1268,8 @@ function renderItem(it) {
   // it.h comes from the whitelist sanitizer in server.mjs (pageHelpers.clean): plain tags only, text escaped.
   else if (it.k === 'assistant') el.innerHTML = it.h || '';
   else if (it.k === 'tool') {
-    el.innerHTML = `<div class="txt">${esc(it.t || '')}</div>`;
+    const out = /\n/.test(it.t || '');
+    el.innerHTML = `<div class="txt${out ? ' out' : ''}">${esc(it.t || '')}</div>`;
     if (it.f) el.dataset.file = it.f;
   }
   else el.textContent = it.t || '';
@@ -1156,8 +1280,17 @@ function renderItem(it) {
 const nearBottom = () => list.scrollHeight - list.scrollTop - list.clientHeight < 120;
 
 let lastChat = null;
+let lastHumanRequest = '';
+let stoppedRequest = '';
+function noteHuman(chat) {
+  const items = chat?.items || [];
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (items[i].k === 'human' && items[i].t) { lastHumanRequest = items[i].t; return; }
+  }
+}
 function renderChat(chat) {
   lastChat = chat;
+  noteHuman(chat);
   $('empty').hidden = !!chat;
   $('older').hidden = !chat;
   $('pickMode').hidden = !chat?.mode;
@@ -1246,6 +1379,7 @@ function renderQueue(busy, queued, subs = [], readonly = false, changed = 0) {
       + `<button data-sub="${esc(n)}" data-part="open">查看</button><button data-sub="${esc(n)}" data-part="stop">停止</button></div>`).join('');
   }
   if (busy && !readonly) html += `<div class="run"><i></i><span>Agent 正在运行${queued.length ? '，下面的消息会在这一轮结束后依次发送' : '，现在发的消息会先排队'}</span><button data-stop>停止</button></div>`;
+  if (stoppedRequest && !readonly) html += `<div class="q"><span class="qt req">${esc(stoppedRequest)}</span><button data-reedit>修改刚才的请求</button><button data-reedit-x>先不改</button></div>`;
   if (queued.length) {
     html += `<div class="qh">排队中 ${queued.length} 条</div>`;
     html += queued.map(q => `<div class="q"><span class="qt">${esc(q.t || '(空)')}</span>`
@@ -1284,14 +1418,36 @@ $('queueBar').onclick = async e => {
   if ('fold' in b.dataset) { subsOpen = !subsOpen; return renderQueue(lastChat?.busy, lastChat?.queued || [], lastChat?.subagents || [], lastChat?.readonly, lastChat?.changed); }
   if ('stop' in b.dataset) {
     if (!await ask('停止 Agent？\n它这一轮正在做的事会中断。', '停止')) return;
-    send({ t: 'stop' }); status('已停止 Agent'); return;
+    stoppedRequest = lastHumanRequest;
+    send({ t: 'stop' });
+    status('已停止 Agent');
+    if (lastChat) renderQueue(lastChat.busy, lastChat.queued || [], lastChat.subagents || [], lastChat.readonly, lastChat.changed);
+    return;
+  }
+  if ('reedit' in b.dataset) {
+    text.value = stoppedRequest;
+    stoppedRequest = '';
+    autosize();
+    text.focus();
+    if (lastChat) renderQueue(lastChat.busy, lastChat.queued || [], lastChat.subagents || [], lastChat.readonly, lastChat.changed);
+    status('已放回输入框，改完点发送');
+    return;
+  }
+  if ('reeditX' in b.dataset) {
+    stoppedRequest = '';
+    if (lastChat) renderQueue(lastChat.busy, lastChat.queued || [], lastChat.subagents || [], lastChat.readonly, lastChat.changed);
+    return;
   }
   if ('main' in b.dataset) { send({ t: 'mainChat' }); status('返回主对话…'); return; }
   if (b.dataset.sub) {
-    if (b.dataset.part === 'stop' && !await ask(`停止子 Agent「${b.dataset.sub}」？\n它做到一半的工作会中断。`, '停止')) return;
-    send({ t: 'subagent', name: b.dataset.sub, part: b.dataset.part });
-    status(b.dataset.part === 'stop' ? '已停止子 Agent' : '正在打开子 Agent…');
-    if (b.dataset.part === 'open') list.scrollTop = list.scrollHeight;
+    if (b.dataset.part === 'stop') {
+      if (!await ask(`停止子 Agent「${b.dataset.sub}」？\n它做到一半的工作会中断。`, '停止')) return;
+      send({ t: 'subagent', name: b.dataset.sub, part: 'stop' });
+      status('已停止子 Agent');
+      return;
+    }
+    setMode('term', { prefer: 'agent', match: b.dataset.sub });
+    status('正在读取终端…');
     return;
   }
   if (b.dataset.a === 'edit') return editQueued(b.dataset.q);
@@ -1322,7 +1478,7 @@ document.addEventListener('click', async e => {
 $('pickMode').onclick = () => { status('读取模式列表…'); send({ t: 'openMenu', kind: 'mode' }); };
 $('pickModel').onclick = () => { status('读取模型列表…'); send({ t: 'openMenu', kind: 'model' }); };
 $('pickHistory').onclick = () => { status('读取历史对话…'); send({ t: 'openMenu', kind: 'history' }); };
-$('newChat').onclick = () => { send({ t: 'newChat' }); status('已新建对话'); };
+$('newChat').onclick = () => { send({ t: 'newChat' }); lastHumanRequest = ''; stoppedRequest = ''; status('已新建对话'); };
 
 /* ---------- file viewer ---------- */
 $('vBody').classList.toggle('wrap', store.get('wrap') !== 'off');
@@ -1567,6 +1723,7 @@ $('send').onclick = () => {
   const v = text.value;
   if (!v.trim()) return;
   send({ t: 'send', text: v, submit: true });
+  stoppedRequest = '';
   text.value = ''; autosize();
   if (mode === 'chat') list.scrollTop = list.scrollHeight;
 };
