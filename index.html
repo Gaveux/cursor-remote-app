@@ -733,10 +733,12 @@ function showMenu(kind, items, max) {
   status('');
   const maxRow = typeof max === 'boolean'
     ? `<button class="opt" data-max><span class="lbl">MAX Mode<span class="sub">更大上下文、更贵</span></span><span class="switch ${max ? 'on' : ''}"></span></button>` : '';
+  const hint = kind === 'history' ? '<div class="hint">「模型」只改这一条对话用的模型。点名称则切换到这条对话。</div>' : '';
   openSheet('menu', `<h3>${MENU_TITLE[kind] || ''}</h3>` + maxRow + items.map(it => {
     const pick = `<button class="opt ${it.checked ? 'cur' : ''}" data-kind="${kind}" data-label="${esc(it.label)}"><span class="lbl">${esc(it.label)}</span></button>`;
+    if (kind === 'history' && it.label !== 'Archived') return `<div class="optRow">${pick}<button class="paramBtn" data-tab-model="${esc(it.label)}">模型</button></div>`;
     return it.params ? `<div class="optRow">${pick}<button class="paramBtn" data-params="${esc(it.id)}" data-plabel="${esc(it.label)}">参数</button></div>` : pick;
-  }).join(''));
+  }).join('') + hint);
 }
 
 let gitState = null;
@@ -997,6 +999,7 @@ $('sheet').addEventListener('click', async e => {
   const b = e.target.closest('button');
   if (!b) return;
   if (b.dataset.win) { closeSheet(); return send({ t: 'attach', id: b.dataset.win }); }
+  if (b.dataset.tabModel) { closeSheet(); status('读取这个对话的模型…'); return send({ t: 'tabModel', label: b.dataset.tabModel }); }
   if (b.dataset.kind) { closeSheet(); status('切换中…'); return send({ t: 'pickMenu', kind: b.dataset.kind, label: b.dataset.label }); }
   if (b.dataset.chopen) { closeSheet(); return openFile(b.dataset.chopen); }
   if (b.dataset.gitpath) { closeSheet(); return openGitDiff(b.dataset.gitpath, b.dataset.gitgroup || ''); }
