@@ -673,6 +673,7 @@ function connect() {
     else if (m.t === 'term') renderTerm(m);
     else if (m.t === 'tree') renderTree(m);
     else if (m.t === 'menu') showMenu(m.kind, m.items, m.max);
+    else if (m.t === 'modelSettings') showModelSettings(m);
     else if (m.t === 'params') showParams(m);
     else if (m.t === 'changes') showChanges(m);
     else if (m.t === 'file') showFile(m);
@@ -727,13 +728,14 @@ function showWindows() {
 }
 $('title').onclick = () => { send({ t: 'windows' }); showWindows(); };
 
-const MENU_TITLE = { mode: '选择模式', model: '选择模型', history: '对话标签' };
+const MENU_TITLE = { mode: '选择模式', model: '选择模型', history: '对话标签', context: '上下文', effort: '思考强度' };
+const SETTING_LABEL = { Fast: '快速', Context: '上下文', Effort: '思考强度', Model: '模型' };
 function showMenu(kind, items, max) {
   if (!items.length) return status('菜单是空的，可能 Cursor 版本不同', false);
   status('');
   const maxRow = typeof max === 'boolean'
     ? `<button class="opt" data-max><span class="lbl">MAX Mode<span class="sub">更大上下文、更贵</span></span><span class="switch ${max ? 'on' : ''}"></span></button>` : '';
-  const hint = kind === 'history' ? '<div class="hint">「模型」只改这一条对话用的模型。点名称则切换到这条对话。</div>' : '';
+  const hint = kind === 'history' ? '<div class="hint">「模型」可改这一条对话的模型、上下文和思考强度。点名称则切换到这条对话。</div>' : '';
   openSheet('menu', `<h3>${MENU_TITLE[kind] || ''}</h3>` + maxRow + items.map(it => {
     const pick = `<button class="opt ${it.checked ? 'cur' : ''}" data-kind="${kind}" data-label="${esc(it.label)}"><span class="lbl">${esc(it.label)}</span></button>`;
     if (kind === 'history' && it.label !== 'Archived') return `<div class="optRow">${pick}<button class="paramBtn" data-tab-model="${esc(it.label)}">模型</button></div>`;
@@ -811,6 +813,17 @@ function showChanges(m) {
       + `<button class="paramBtn" data-ch="${i}" data-name="${esc(f.name)}" data-act2="keep">保留</button>`
       + `<button class="paramBtn" data-ch="${i}" data-name="${esc(f.name)}" data-act2="undo">撤销</button></div>`).join('')
     + '<div class="hint">点文件名查看内容。「保留」接受这个文件的改动，「撤销」把它恢复成改动前的样子。</div>');
+}
+
+function showModelSettings(m) {
+  status('');
+  const fast = m.fast ? `<button class="opt" data-fast><span class="lbl">快速</span><span class="switch ${m.fast.on ? 'on' : ''}"></span></button>` : '';
+  const rows = (m.rows || []).map(r => {
+    const name = SETTING_LABEL[r.title] || r.title;
+    const act = r.key === 'model' ? 'data-models="1"' : `data-setting="${esc(r.key)}"`;
+    return `<button class="opt" ${act}><span class="lbl">${esc(name)}<span class="sub">${esc(r.value)}</span></span></button>`;
+  }).join('');
+  openSheet('modelSettings', `<h3>模型</h3>${fast}${rows}<div class="hint">快速、上下文、思考强度和模型只作用于当前这条对话。</div>`);
 }
 
 function showParams(m) {
@@ -1014,6 +1027,12 @@ $('sheet').addEventListener('click', async e => {
     status('处理中…');
     return send({ t: 'change', i: 0, name: b.dataset.chbar, act: 'bar' });
   }
+  if ('fast' in b.dataset) { status('切换快速模式…'); return send({ t: 'toggleFast' }); }
+  if (b.dataset.setting) {
+    status(b.dataset.setting === 'context' ? '读取上下文选项…' : '读取思考强度选项…');
+    return send({ t: 'modelSetting', key: b.dataset.setting });
+  }
+  if ('models' in b.dataset) { status('读取模型列表…'); return send({ t: 'modelSetting', key: 'model' }); }
   if ('max' in b.dataset) { status('切换 MAX Mode…'); return send({ t: 'toggleMax' }); }
   if (b.dataset.params) { status('读取模型参数…'); return send({ t: 'params', model: b.dataset.params, label: b.dataset.plabel }); }
   if (b.dataset.section) { status('设置中…'); return send({ t: 'pickParam', model: b.dataset.model, label: b.dataset.plabel, section: b.dataset.section, value: b.dataset.value }); }
