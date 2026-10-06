@@ -84,6 +84,7 @@ const I18N = (() => {
     '已立即发送这条排队消息': 'Queued message sent now', '已删除这条排队消息': 'Queued message deleted',
     '读取模式列表…': 'Loading modes…', '读取模型列表…': 'Loading models…', '读取历史对话…': 'Loading chat history…', '已新建对话': 'New chat started',
     '正在从电脑读取…': 'Reading from the computer…', '可以在电脑上的 Cursor 里打开': 'You can open it in Cursor on the computer',
+    '渲染': 'Render',
     '文件太长，只显示了前 512 KB': 'File too long; showing the first 512 KB',
     '语言 / Language': '语言 / Language', '请说话…（再点一下结束）': 'Listening… (tap again to stop)', '请说话…': 'Listening…',
     '没听清，再试一次': 'Didn\'t catch that, try again', '没有麦克风权限': 'No microphone permission',
