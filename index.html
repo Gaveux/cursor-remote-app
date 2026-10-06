@@ -200,6 +200,26 @@
   #vBody img { display: block; max-width: 100%; margin: 12px auto; background: #fff1; }
   #vBody .note { padding: 30px 20px; color: #999; text-align: center; line-height: 1.7; }
   #vBody .note.err { color: #f77; }
+  #vBody .doc { padding: 16px 18px 56px; color: #e6e6e6; font-size: 16px; line-height: 1.65; overflow-wrap: anywhere; }
+  #vBody .doc h1, #vBody .doc h2, #vBody .doc h3, #vBody .doc h4, #vBody .doc h5, #vBody .doc h6 { color: #fff; line-height: 1.3; margin: 1.05em 0 .35em; }
+  #vBody .doc h1 { font-size: 1.5em; } #vBody .doc h2 { font-size: 1.28em; } #vBody .doc h3 { font-size: 1.12em; }
+  #vBody .doc p { margin: .55em 0; }
+  #vBody .doc a { color: #6cb6ff; }
+  #vBody .doc code { font: 13px/1.45 ui-monospace, Menlo, monospace; background: #2a2a2a; padding: .1em .35em; border-radius: 4px; }
+  #vBody .doc pre { background: #141414; border: 1px solid #333; border-radius: 8px; padding: 12px; overflow: auto; }
+  #vBody .doc pre code { background: none; padding: 0; white-space: pre; }
+  #vBody .doc blockquote { margin: .7em 0; padding: .1em 0 .1em 12px; border-left: 3px solid #444; color: #bbb; }
+  #vBody .doc ul, #vBody .doc ol { margin: .4em 0; padding-left: 1.35em; }
+  #vBody .doc li { margin: .2em 0; }
+  #vBody .doc li.task { list-style: none; margin-left: -1.2em; }
+  #vBody .doc li.task input { margin-right: .35em; }
+  #vBody .doc hr { border: 0; border-top: 1px solid #333; margin: 1.1em 0; }
+  #vBody .doc table { border-collapse: collapse; width: max-content; max-width: 100%; margin: .7em 0; }
+  #vBody .doc th, #vBody .doc td { border: 1px solid #3c3c3c; padding: 6px 10px; vertical-align: top; }
+  #vBody .doc th { background: #2a2a2a; }
+  #vBody .doc img { display: block; max-width: 100%; height: auto; margin: 10px 0; background: #fff1; }
+  #vBody .doc .missimg { color: #999; font-size: 13px; }
+  #vBody .htmlframe { display: block; width: 100%; border: 0; background: #fff; min-height: 100%; }
 
   /* gate (login / offline) */
   #gate { position: fixed; inset: 0; z-index: 20; background: #1e1e1e; display: none; flex-direction: column; gap: 12px; padding: calc(60px + env(safe-area-inset-top)) 24px 24px; }
@@ -282,6 +302,7 @@
   <div class="bar">
     <button id="vClose">←</button>
     <div class="names"><div id="vName"></div><div id="vPath"></div></div>
+    <button id="vRender" type="button" hidden>渲染</button>
     <button id="vWrap">换行</button>
   </div>
   <div id="vBody"></div>
@@ -1508,7 +1529,20 @@ function openGitDiff(filePath, group) {
   send({ t: 'gitdiff', path: filePath, group });
 }
 
+let fileView = null;
+let renderNotes = true;
+
+function richKind(name) {
+  const ext = String(name || '').split('.').pop().toLowerCase();
+  if (ext === 'md' || ext === 'markdown') return 'md';
+  if (ext === 'html' || ext === 'htm') return 'html';
+  return '';
+}
+
 function openFile(ref) {
+  fileView = null;
+  renderNotes = !/(?::\d+|#L\d+)/.test(ref);
+  $('vRender').hidden = true;
   $('vName').textContent = ref.split('/').pop().replace(/(?::\d+.*|#L\d+.*)$/, '');
   $('vPath').textContent = '';
   $('vBody').innerHTML = '<div class="note">正在从电脑读取…</div>';
@@ -1519,12 +1553,190 @@ function openFile(ref) {
   send({ t: 'file', path: ref });
 }
 
+function safeUrl(url) {
+  const u = String(url || '').trim();
+  if (/^(https?:|mailto:)/i.test(u)) return u;
+  if (u.startsWith('#') && !/[\s"]/.test(u)) return u;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(u) || u.startsWith('//')) return '';
+  return u.replace(/\\/g, '/');
+}
+function joinFile(filePath, rel) {
+  const clean = rel.split('#')[0].split('?')[0];
+  const base = String(filePath || '').split('/').slice(0, -1);
+  for (const part of clean.split('/')) {
+    if (!part || part === '.') continue;
+    if (part === '..') base.pop();
+    else base.push(part);
+  }
+  return base.join('/');
+}
+function inlineMd(src) {
+  const stash = [];
+  const keep = html => { stash.push(html); return `\u0000${stash.length - 1}\u0000`; };
+  let s = String(src);
+  s = s.replace(/`([^`\n]+)`/g, (_, c) => keep(`<code>${esc(c)}</code>`));
+  s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, alt, url) => {
+    const safe = safeUrl(url);
+    if (/^(https?:|data:image\/)/i.test(safe)) return keep(`<img alt="${esc(alt)}" src="${esc(safe)}">`);
+    return keep(`<span class="missimg">${esc(alt || url)}</span>`);
+  });
+  s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, text, url) => {
+    const safe = safeUrl(url);
+    if (!safe) return keep(esc(text));
+    if (/^(https?:|mailto:)/i.test(safe)) return keep(`<a href="${esc(safe)}" target="_blank" rel="noopener">${inlineMd(text)}</a>`);
+    if (safe.startsWith('#')) return keep(`<a href="${esc(safe)}">${inlineMd(text)}</a>`);
+    return keep(`<a href="#" data-rel="${esc(safe)}">${inlineMd(text)}</a>`);
+  });
+  s = esc(s);
+  s = s.replace(/\*\*(.+?)\*\*|__(.+?)__/g, (_, a, b) => `<strong>${a || b}</strong>`);
+  s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, (_, a, b) => `${a}<em>${b}</em>`);
+  s = s.replace(/(^|[^_\w])_([^_\n]+)_/g, (_, a, b) => `${a}<em>${b}</em>`);
+  s = s.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+  return s.replace(/\u0000(\d+)\u0000/g, (_, n) => stash[n]);
+}
+function listMarker(line) {
+  const m = /^(\s*)([-*+]|\d+\.)\s+(.*)$/.exec(line);
+  return m ? { indent: m[1].length, ordered: /\d/.test(m[2]), rest: m[3] } : null;
+}
+function isRule(line) { return /^(\s*)(-{3,}|\*{3,}|_{3,})\s*$/.test(line); }
+function isTableSep(line) {
+  const cells = line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|');
+  return cells.length > 0 && cells.every(c => /^\s*:?-{3,}:?\s*$/.test(c));
+}
+function tableCells(line) {
+  return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+}
+function renderMarkdown(src) {
+  const lines = String(src).replace(/\r\n/g, '\n').split('\n');
+  const out = [];
+  let i = 0;
+  const readList = (at, minIndent) => {
+    const first = listMarker(lines[at]);
+    if (!first || first.indent < minIndent) return null;
+    const indent = first.indent;
+    const ordered = first.ordered;
+    const items = [];
+    let n = at;
+    while (n < lines.length) {
+      if (!lines[n].trim()) {
+        let j = n + 1;
+        while (j < lines.length && !lines[j].trim()) j++;
+        const nxt = j < lines.length ? listMarker(lines[j]) : null;
+        if (!nxt || nxt.indent < indent || nxt.ordered !== ordered) break;
+        n = j;
+      }
+      const mark = listMarker(lines[n]);
+      if (!mark || mark.indent !== indent || mark.ordered !== ordered) break;
+      const body = [mark.rest];
+      n++;
+      const nested = [];
+      while (n < lines.length && lines[n].trim()) {
+        const sub = listMarker(lines[n]);
+        if (sub && sub.indent <= indent) break;
+        if (sub) {
+          const got = readList(n, indent + 1);
+          if (!got) break;
+          nested.push(got.html);
+          n = got.n;
+          continue;
+        }
+        if (/^(#{1,6}\s|```)/.test(lines[n]) || isRule(lines[n])) break;
+        body.push(lines[n].trim());
+        n++;
+      }
+      items.push({ body, nested });
+    }
+    const html = `<${ordered ? 'ol' : 'ul'}>${items.map(it => {
+      const task = /^\[([ xX])\]\s*([\s\S]*)$/.exec(it.body[0]);
+      const text = task ? [task[2], ...it.body.slice(1)].join(' ') : it.body.join(' ');
+      const box = task ? `<input type="checkbox" disabled${task[1].toLowerCase() === 'x' ? ' checked' : ''}> ` : '';
+      return `<li${task ? ' class="task"' : ''}>${box}${inlineMd(text)}${it.nested.join('')}</li>`;
+    }).join('')}</${ordered ? 'ol' : 'ul'}>`;
+    return { html, n };
+  };
+  while (i < lines.length) {
+    const line = lines[i];
+    if (!line.trim()) { i++; continue; }
+    if (line.startsWith('```')) {
+      const buf = [];
+      i++;
+      while (i < lines.length && !lines[i].startsWith('```')) buf.push(lines[i++]);
+      if (i < lines.length) i++;
+      out.push(`<pre><code>${esc(buf.join('\n'))}</code></pre>`);
+      continue;
+    }
+    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
+    if (heading) { out.push(`<h${heading[1].length}>${inlineMd(heading[2])}</h${heading[1].length}>`); i++; continue; }
+    if (isRule(line)) { out.push('<hr>'); i++; continue; }
+    if (/^\s*>/.test(line)) {
+      const buf = [];
+      while (i < lines.length && /^\s*>/.test(lines[i])) buf.push(lines[i++].replace(/^\s*>\s?/, ''));
+      out.push(`<blockquote>${renderMarkdown(buf.join('\n'))}</blockquote>`);
+      continue;
+    }
+    if (i + 1 < lines.length && line.includes('|') && isTableSep(lines[i + 1])) {
+      const head = tableCells(line);
+      i += 2;
+      const rows = [];
+      while (i < lines.length && lines[i].includes('|') && lines[i].trim()) rows.push(tableCells(lines[i++]));
+      out.push(`<table><thead><tr>${head.map(c => `<th>${inlineMd(c)}</th>`).join('')}</tr></thead><tbody>${
+        rows.map(r => `<tr>${head.map((_, k) => `<td>${inlineMd(r[k] || '')}</td>`).join('')}</tr>`).join('')
+      }</tbody></table>`);
+      continue;
+    }
+    const list = listMarker(line) && readList(i, 0);
+    if (list) { out.push(list.html); i = list.n; continue; }
+    const buf = [line];
+    i++;
+    while (i < lines.length && lines[i].trim() && !lines[i].startsWith('```') && !/^(#{1,6})\s+/.test(lines[i]) && !isRule(lines[i]) && !/^\s*>/.test(lines[i]) && !listMarker(lines[i]) && !(i + 1 < lines.length && lines[i].includes('|') && isTableSep(lines[i + 1]))) buf.push(lines[i++]);
+    out.push(`<p>${inlineMd(buf.join(' '))}</p>`);
+  }
+  return out.join('\n');
+}
+function htmlDoc(raw) {
+  if (/<!doctype\s+html|<html[\s>]/i.test(raw)) return raw;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:16px;font:16px/1.65 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:#222;background:#fff}img,svg,video{max-width:100%}pre{overflow:auto}a{color:#0969da}</style></head><body>${raw}</body></html>`;
+}
+function showRendered(m, kind) {
+  const body = $('vBody');
+  const tail = m.truncated ? `<div class="note">${esc(I18N.tr('文件太长，只显示了前 512 KB'))}</div>` : '';
+  if (kind === 'html') {
+    body.innerHTML = tail;
+    const frame = document.createElement('iframe');
+    frame.className = 'htmlframe';
+    frame.setAttribute('sandbox', 'allow-same-origin allow-popups allow-popups-to-escape-sandbox');
+    frame.referrerPolicy = 'no-referrer';
+    frame.srcdoc = htmlDoc(m.text || '');
+    body.prepend(frame);
+    frame.onload = () => {
+      try {
+        const doc = frame.contentDocument;
+        frame.style.height = Math.max(doc.documentElement.scrollHeight, doc.body ? doc.body.scrollHeight : 0, body.clientHeight) + 'px';
+      } catch {}
+    };
+    return;
+  }
+  body.innerHTML = `<div class="doc">${renderMarkdown(m.text || '')}</div>${tail}`;
+  body.querySelectorAll('a[data-rel]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      const next = joinFile(m.path, a.dataset.rel);
+      if (next) openFile(next);
+    });
+  });
+}
+
 function showFile(m) {
   if (!$('viewer').classList.contains('open') || m.loading) return;
+  fileView = m;
   $('vName').textContent = m.name || '';
   // Leading LRM keeps the rtl ellipsis from reordering the path's slashes.
   $('vPath').textContent = m.path ? '\u200e' + (m.host ? m.host + ':' : '') + m.path + (m.size != null ? ` · ${fmtSize(m.size)}` : '') : '';
   const body = $('vBody');
+  const kind = !m.error && !m.image && !m.hunks && m.text != null ? richKind(m.name) : '';
+  $('vRender').hidden = !kind;
+  $('vRender').classList.toggle('on', !!(kind && renderNotes));
+  $('vWrap').hidden = !!(kind && renderNotes);
   if (m.error) {
     body.innerHTML = `<div class="note err">${esc(I18N.tr(m.error))}</div><div class="note">${esc(I18N.tr('可以在电脑上的 Cursor 里打开'))}</div>`;
     return;
@@ -1534,6 +1746,11 @@ function showFile(m) {
     const img = new Image();
     img.src = m.image;
     body.append(img);
+    return;
+  }
+  if (kind && renderNotes) {
+    showRendered(m, kind);
+    body.scrollTop = 0;
     return;
   }
   if (m.diff) {
@@ -1578,6 +1795,11 @@ function closeViewer() {
 }
 $('vClose').onclick = () => history.state?.viewer ? history.back() : closeViewer();
 window.addEventListener('popstate', () => { if ($('viewer').classList.contains('open')) closeViewer(); });
+$('vRender').onclick = () => {
+  if (!fileView) return;
+  renderNotes = !renderNotes;
+  showFile(fileView);
+};
 $('vWrap').onclick = () => {
   const on = !$('vBody').classList.contains('wrap');
   $('vBody').classList.toggle('wrap', on);
