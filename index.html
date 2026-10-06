@@ -677,7 +677,13 @@ function connect() {
     else if (m.t === 'params') showParams(m);
     else if (m.t === 'changes') showChanges(m);
     else if (m.t === 'file') showFile(m);
-    else if (m.t === 'status') status(m.msg, m.ok);
+    else if (m.t === 'status') {
+      status(m.msg, m.ok);
+      if (!m.ok && (sheetKind === 'modelSettings' || sheetKind === 'menu') && !$('sheet').querySelector('button')) {
+        const hint = $('sheet').querySelector('.hint');
+        if (hint) hint.textContent = m.msg;
+      }
+    }
   };
 }
 
@@ -817,6 +823,7 @@ function showChanges(m) {
 
 function showModelSettings(m) {
   status('');
+  if (!m?.rows?.length) return status('打不开模型设置', false);
   const fast = m.fast ? `<button class="opt" data-fast><span class="lbl">快速</span><span class="switch ${m.fast.on ? 'on' : ''}"></span></button>` : '';
   const rows = (m.rows || []).map(r => {
     const name = SETTING_LABEL[r.title] || r.title;
@@ -1029,10 +1036,14 @@ $('sheet').addEventListener('click', async e => {
   }
   if ('fast' in b.dataset) { status('切换快速模式…'); return send({ t: 'toggleFast' }); }
   if (b.dataset.setting) {
-    status(b.dataset.setting === 'context' ? '读取上下文选项…' : '读取思考强度选项…');
+    const loading = b.dataset.setting === 'context' ? '读取上下文选项…' : '读取思考强度选项…';
+    openSheet('menu', `<h3>${b.dataset.setting === 'context' ? '上下文' : '思考强度'}</h3><div class="hint">${loading}</div>`);
     return send({ t: 'modelSetting', key: b.dataset.setting });
   }
-  if ('models' in b.dataset) { status('读取模型列表…'); return send({ t: 'modelSetting', key: 'model' }); }
+  if ('models' in b.dataset) {
+    openSheet('menu', '<h3>选择模型</h3><div class="hint">读取模型列表…</div>');
+    return send({ t: 'modelSetting', key: 'model' });
+  }
   if ('max' in b.dataset) { status('切换 MAX Mode…'); return send({ t: 'toggleMax' }); }
   if (b.dataset.params) { status('读取模型参数…'); return send({ t: 'params', model: b.dataset.params, label: b.dataset.plabel }); }
   if (b.dataset.section) { status('设置中…'); return send({ t: 'pickParam', model: b.dataset.model, label: b.dataset.plabel, section: b.dataset.section, value: b.dataset.value }); }
@@ -1539,7 +1550,10 @@ document.addEventListener('click', async e => {
 });
 
 $('pickMode').onclick = () => { status('读取模式列表…'); send({ t: 'openMenu', kind: 'mode' }); };
-$('pickModel').onclick = () => { status('读取模型列表…'); send({ t: 'openMenu', kind: 'model' }); };
+$('pickModel').onclick = () => {
+  openSheet('modelSettings', '<h3>模型</h3><div class="hint">读取模型设置…</div>');
+  send({ t: 'openMenu', kind: 'model' });
+};
 $('pickHistory').onclick = () => { status('读取对话标签…'); send({ t: 'openMenu', kind: 'history' }); };
 $('newChat').onclick = () => { send({ t: 'newChat' }); lastHumanRequest = ''; stoppedRequest = ''; rerunStopped = false; status('已新建对话'); };
 
