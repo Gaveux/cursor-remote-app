@@ -284,7 +284,7 @@
   <div id="chatTools">
     <button id="pickMode" hidden></button>
     <button id="pickModel" hidden></button>
-    <button id="pickHistory">历史</button>
+    <button id="pickHistory">标签</button>
     <button id="newChat">＋ 新建</button>
   </div>
   <div class="row">
@@ -725,7 +725,7 @@ function showWindows() {
 }
 $('title').onclick = () => { send({ t: 'windows' }); showWindows(); };
 
-const MENU_TITLE = { mode: '选择模式', model: '选择模型', history: '历史对话' };
+const MENU_TITLE = { mode: '选择模式', model: '选择模型', history: '对话标签' };
 function showMenu(kind, items, max) {
   if (!items.length) return status('菜单是空的，可能 Cursor 版本不同', false);
   status('');
@@ -1513,7 +1513,7 @@ document.addEventListener('click', async e => {
 
 $('pickMode').onclick = () => { status('读取模式列表…'); send({ t: 'openMenu', kind: 'mode' }); };
 $('pickModel').onclick = () => { status('读取模型列表…'); send({ t: 'openMenu', kind: 'model' }); };
-$('pickHistory').onclick = () => { status('读取历史对话…'); send({ t: 'openMenu', kind: 'history' }); };
+$('pickHistory').onclick = () => { status('读取对话标签…'); send({ t: 'openMenu', kind: 'history' }); };
 $('newChat').onclick = () => { send({ t: 'newChat' }); lastHumanRequest = ''; stoppedRequest = ''; status('已新建对话'); };
 
 /* ---------- file viewer ---------- */
