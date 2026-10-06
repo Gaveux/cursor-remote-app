@@ -714,7 +714,7 @@ const KIND_TAG = { agents: 'Agents', ssh: 'SSH', local: '本地' };
 
 // Cursor titles look like "file.py — Folder [SSH: host]"; the window is identified by folder (+ host), not the open file.
 function winLabel(title) {
-  const host = /\[SSH: ([^\]]+)\]/.exec(title)?.[1];
+  const host = /\[SSH: ([^\]]+)\]\s*$/.exec(title)?.[1];
   const parts = title.replace(/\s*\[SSH: [^\]]+\]\s*$/, '').split(' — ').map(s => s.replace(/^●\s*/, '').trim());
   const folder = parts.pop() || title;
   return { name: host ? `${folder} · ${host}` : folder, file: parts.join(' — ') };
