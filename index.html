@@ -1320,6 +1320,7 @@ const nearBottom = () => list.scrollHeight - list.scrollTop - list.clientHeight 
 let lastChat = null;
 let lastHumanRequest = '';
 let stoppedRequest = '';
+let rerunStopped = false;
 function noteHuman(chat) {
   const items = chat?.items || [];
   for (let i = items.length - 1; i >= 0; i--) {
@@ -1465,14 +1466,16 @@ $('queueBar').onclick = async e => {
   if ('reedit' in b.dataset) {
     text.value = stoppedRequest;
     stoppedRequest = '';
+    rerunStopped = true;
     autosize();
     text.focus();
     if (lastChat) renderQueue(lastChat.busy, lastChat.queued || [], lastChat.subagents || [], lastChat.readonly, lastChat.changed);
-    status('已放回输入框，改完点发送');
+    status('已放回输入框。改完点发送，会重新运行刚才的请求');
     return;
   }
   if ('reeditX' in b.dataset) {
     stoppedRequest = '';
+    rerunStopped = false;
     if (lastChat) renderQueue(lastChat.busy, lastChat.queued || [], lastChat.subagents || [], lastChat.readonly, lastChat.changed);
     return;
   }
@@ -1516,7 +1519,7 @@ document.addEventListener('click', async e => {
 $('pickMode').onclick = () => { status('读取模式列表…'); send({ t: 'openMenu', kind: 'mode' }); };
 $('pickModel').onclick = () => { status('读取模型列表…'); send({ t: 'openMenu', kind: 'model' }); };
 $('pickHistory').onclick = () => { status('读取对话标签…'); send({ t: 'openMenu', kind: 'history' }); };
-$('newChat').onclick = () => { send({ t: 'newChat' }); lastHumanRequest = ''; stoppedRequest = ''; status('已新建对话'); };
+$('newChat').onclick = () => { send({ t: 'newChat' }); lastHumanRequest = ''; stoppedRequest = ''; rerunStopped = false; status('已新建对话'); };
 
 /* ---------- file viewer ---------- */
 $('vBody').classList.toggle('wrap', store.get('wrap') !== 'off');
@@ -1974,7 +1977,9 @@ text.addEventListener('input', autosize);
 $('send').onclick = () => {
   const v = text.value;
   if (!v.trim()) return;
-  send({ t: 'send', text: v, submit: true });
+  send(rerunStopped ? { t: 'resubmit', text: v } : { t: 'send', text: v, submit: true });
+  if (rerunStopped) status('正在重新运行刚才的请求…');
+  rerunStopped = false;
   stoppedRequest = '';
   text.value = ''; autosize();
   if (mode === 'chat') list.scrollTop = list.scrollHeight;
