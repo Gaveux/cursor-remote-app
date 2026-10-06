@@ -47,6 +47,8 @@ const I18N = (() => {
     '切换 Cursor 窗口': 'Switch Cursor window', '没有找到窗口': 'No windows found', '本地': 'Local',
     '「Agents」是 Cursor 专门跑 Agent 的窗口；其他是普通编辑器窗口（IDE 模式），SSH 远程窗口也在这里。': '"Agents" is Cursor\'s dedicated Agent window; the others are regular editor windows (IDE mode), including SSH remotes.',
     '选择模式': 'Mode', '选择模型': 'Model', '对话标签': 'Tabs', '菜单是空的，可能 Cursor 版本不同': 'The menu is empty; your Cursor version may differ',
+    '「模型」只改这一条对话用的模型。点名称则切换到这条对话。': 'Model changes only that chat. The name switches to it.',
+    '读取这个对话的模型…': 'Loading this chat’s model…',
     '更大上下文、更贵': 'Larger context, costs more', '参数': 'Params', '模型': 'Model', '改动会直接应用到电脑上 Cursor 的这个模型。': 'Changes apply directly to this model in Cursor on your computer.',
     '：开': ': on', '：关': ': off',
     '已配对设备': 'Paired devices', '移除': 'Remove', '添加新设备：在电脑上运行 npm run pair。': 'Add a device: run npm run pair on the computer.',
