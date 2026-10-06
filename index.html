@@ -219,6 +219,8 @@
   #vBody .doc th { background: #2a2a2a; }
   #vBody .doc img { display: block; max-width: 100%; height: auto; margin: 10px 0; background: #fff1; }
   #vBody .doc .missimg { color: #999; font-size: 13px; }
+  #vBody .doc .katex { font-size: 1.05em; }
+  #vBody .doc .katex-display { margin: .7em 0; overflow-x: auto; overflow-y: hidden; }
   #vBody .htmlframe { display: block; width: 100%; border: 0; background: #fff; min-height: 100%; }
 
   /* gate (login / offline) */
@@ -1695,18 +1697,129 @@ function renderMarkdown(src) {
 }
 function htmlDoc(raw) {
   if (/<!doctype\s+html|<html[\s>]/i.test(raw)) return raw;
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:16px;font:16px/1.65 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:#222;background:#fff}img,svg,video{max-width:100%}pre{overflow:auto}a{color:#0969da}</style></head><body>${raw}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:16px;font:16px/1.65 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:#222;background:#fff}img,svg,video{max-width:100%}pre{overflow:auto}a{color:#0969da}.katex-display{overflow-x:auto;overflow-y:hidden}</style></head><body>${raw}</body></html>`;
 }
-function showRendered(m, kind) {
+const KATEX_CSS = 'https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css';
+const KATEX_JS = 'https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.js';
+let katexLoading = null;
+function loadKatex() {
+  if (window.katex) return Promise.resolve();
+  if (!katexLoading) katexLoading = new Promise(resolve => {
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = KATEX_CSS;
+    document.head.append(css);
+    const js = document.createElement('script');
+    js.src = KATEX_JS;
+    js.onload = () => resolve();
+    js.onerror = () => resolve();
+    document.head.append(js);
+  });
+  return katexLoading;
+}
+function isInlineMath(tex) {
+  if (!tex || tex.length > 500 || /^\s|\s$/.test(tex)) return false;
+  return /[\\^_{}]/.test(tex) || /^[A-Za-z][A-Za-z0-9]*$/.test(tex);
+}
+// Pull TeX out before Markdown sees it, so subscripts are not treated as emphasis.
+function stashMath(src) {
+  const chunks = [];
+  const put = (tex, display) => { chunks.push({ tex, display }); return `\u0001M${chunks.length - 1}\u0001`; };
+  const inlineDollars = text => {
+    let out = '', i = 0;
+    while (i < text.length) {
+      const start = text.indexOf('$', i);
+      if (start < 0) { out += text.slice(i); break; }
+      if (text[start + 1] === '$' || text[start - 1] === '\\') { out += text.slice(i, start + 1); i = start + 1; continue; }
+      const end = text.indexOf('$', start + 1);
+      if (end < 0) { out += text.slice(i); break; }
+      const tex = text.slice(start + 1, end);
+      if (!isInlineMath(tex)) { out += text.slice(i, start + 1); i = start + 1; continue; }
+      out += text.slice(i, start) + put(tex, false);
+      i = end + 1;
+    }
+    return out;
+  };
+  const one = text => {
+    let t = text.replace(/\\begin\{(equation\*?|align\*?|gather\*?|aligned|eqnarray\*?)\}([\s\S]+?)\\end\{\1\}/g, (m, env, tex) => put(`\\begin{${env}}${tex}\\end{${env}}`, true));
+    t = t.replace(/\$\$([\s\S]+?)\$\$/g, (_, tex) => put(tex, true));
+    t = t.replace(/\\\[([\s\S]+?)\\\]/g, (_, tex) => put(tex, true));
+    t = t.replace(/\\\(([\s\S]+?)\\\)/g, (_, tex) => put(tex, false));
+    return inlineDollars(t);
+  };
+  const fences = String(src).split(/(```[\s\S]*?```)/g);
+  const s = fences.map((part, idx) => idx % 2 === 1 ? part : part.split(/(`[^`\n]+`)/g).map((bit, j) => j % 2 === 1 ? bit : one(bit)).join('')).join('');
+  return { s, chunks };
+}
+function mathHtml(tex, display) {
+  if (!window.katex) return `<code>${esc((display ? '$$' : '$') + tex.trim() + (display ? '$$' : '$'))}</code>`;
+  try { return katex.renderToString(tex.trim(), { displayMode: display, throwOnError: false, output: 'html' }); }
+  catch { return `<code>${esc(tex)}</code>`; }
+}
+function applyMath(html, chunks) {
+  return html.replace(/\u0001M(\d+)\u0001/g, (_, n) => {
+    const item = chunks[Number(n)];
+    return item ? mathHtml(item.tex, item.display) : '';
+  });
+}
+function paintHtmlMath(raw) {
+  const parsed = new DOMParser().parseFromString(htmlDoc(raw), 'text/html');
+  parsed.querySelectorAll('script').forEach(s => {
+    const type = s.getAttribute('type') || '';
+    if (!/math\/tex/i.test(type)) { s.remove(); return; }
+    const display = /display/i.test(type);
+    const el = parsed.createElement(display ? 'div' : 'span');
+    el.textContent = (display ? '$$' : '$') + s.textContent + (display ? '$$' : '$');
+    s.replaceWith(el);
+  });
+  const nodes = [];
+  const walker = parsed.createTreeWalker(parsed.body, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (n.parentElement?.closest('pre, code, script, style, textarea, .katex')) continue;
+    if (/\$|\\\(|\\\[|\\begin\{/.test(n.nodeValue)) nodes.push(n);
+  }
+  for (const node of nodes) {
+    const { s, chunks } = stashMath(node.nodeValue);
+    if (!chunks.length) continue;
+    const frag = parsed.createDocumentFragment();
+    const re = /\u0001M(\d+)\u0001/g;
+    let last = 0, m;
+    while ((m = re.exec(s))) {
+      frag.append(s.slice(last, m.index));
+      const item = chunks[Number(m[1])];
+      const holder = parsed.createElement('span');
+      holder.innerHTML = mathHtml(item.tex, item.display);
+      frag.append(holder);
+      last = m.index + m[0].length;
+    }
+    frag.append(s.slice(last));
+    node.parentNode.replaceChild(frag, node);
+  }
+  if (!parsed.querySelector('link[data-katex]')) {
+    const link = parsed.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = KATEX_CSS;
+    link.setAttribute('data-katex', '');
+    parsed.head.append(link);
+  }
+  const mathStyle = parsed.createElement('style');
+  mathStyle.textContent = '.katex-display{overflow-x:auto;overflow-y:hidden;margin:.6em 0}';
+  parsed.head.append(mathStyle);
+  return '<!doctype html>\n' + parsed.documentElement.outerHTML;
+}
+let renderToken = 0;
+async function showRendered(m, kind, token) {
   const body = $('vBody');
   const tail = m.truncated ? `<div class="note">${esc(I18N.tr('文件太长，只显示了前 512 KB'))}</div>` : '';
+  await loadKatex();
+  if (token !== renderToken) return;
   if (kind === 'html') {
     body.innerHTML = tail;
     const frame = document.createElement('iframe');
     frame.className = 'htmlframe';
     frame.setAttribute('sandbox', 'allow-same-origin allow-popups allow-popups-to-escape-sandbox');
     frame.referrerPolicy = 'no-referrer';
-    frame.srcdoc = htmlDoc(m.text || '');
+    frame.srcdoc = paintHtmlMath(m.text || '');
     body.prepend(frame);
     frame.onload = () => {
       try {
@@ -1716,7 +1829,8 @@ function showRendered(m, kind) {
     };
     return;
   }
-  body.innerHTML = `<div class="doc">${renderMarkdown(m.text || '')}</div>${tail}`;
+  const stashed = stashMath(m.text || '');
+  body.innerHTML = `<div class="doc">${applyMath(renderMarkdown(stashed.s), stashed.chunks)}</div>${tail}`;
   body.querySelectorAll('a[data-rel]').forEach(a => {
     a.addEventListener('click', e => {
       e.preventDefault();
@@ -1728,6 +1842,7 @@ function showRendered(m, kind) {
 
 function showFile(m) {
   if (!$('viewer').classList.contains('open') || m.loading) return;
+  const token = ++renderToken;
   fileView = m;
   $('vName').textContent = m.name || '';
   // Leading LRM keeps the rtl ellipsis from reordering the path's slashes.
@@ -1749,7 +1864,7 @@ function showFile(m) {
     return;
   }
   if (kind && renderNotes) {
-    showRendered(m, kind);
+    showRendered(m, kind, token);
     body.scrollTop = 0;
     return;
   }
