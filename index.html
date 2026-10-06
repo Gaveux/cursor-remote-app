@@ -1752,9 +1752,10 @@ function stashMath(src) {
   return { s, chunks };
 }
 function mathHtml(tex, display) {
-  if (!window.katex) return `<code>${esc((display ? '$$' : '$') + tex.trim() + (display ? '$$' : '$'))}</code>`;
-  try { return katex.renderToString(tex.trim(), { displayMode: display, throwOnError: false, output: 'html' }); }
-  catch { return `<code>${esc(tex)}</code>`; }
+  const clean = String(tex).replace(/\\label\{[^}]*\}/g, '').replace(/\\nonumber/g, '');
+  if (!window.katex) return `<code>${esc((display ? '$$' : '$') + clean.trim() + (display ? '$$' : '$'))}</code>`;
+  try { return katex.renderToString(clean.trim(), { displayMode: display, throwOnError: false, output: 'html' }); }
+  catch { return `<code>${esc(clean)}</code>`; }
 }
 function applyMath(html, chunks) {
   return html.replace(/\u0001M(\d+)\u0001/g, (_, n) => {
@@ -1807,6 +1808,26 @@ function paintHtmlMath(raw) {
   parsed.head.append(mathStyle);
   return '<!doctype html>\n' + parsed.documentElement.outerHTML;
 }
+function noteBringsMath(raw) {
+  return /mathjax|katex/i.test(raw);
+}
+// The note's own MathJax has the macros and equation numbers. It runs in the frame only,
+// with no access to the app, and reports its height back here.
+function withSizeProbe(raw) {
+  const probe = '<script>(function(){var send=function(){var h=Math.max(document.documentElement.scrollHeight,document.body?document.body.scrollHeight:0);parent.postMessage({t:"cr-h",h:h},"*");};try{new ResizeObserver(send).observe(document.documentElement);}catch(e){}window.addEventListener("load",function(){send();[400,1200,2500].forEach(function(ms){setTimeout(send,ms);});});})();\u003c/script>';
+  return /<body[^>]*>/i.test(raw) ? raw.replace(/<body[^>]*>/i, tag => tag + probe) : probe + raw;
+}
+let dropFrameMsg = null;
+function watchFrameSize(frame, body) {
+  if (dropFrameMsg) dropFrameMsg();
+  const onMsg = ev => {
+    if (ev.source !== frame.contentWindow || !ev.data || ev.data.t !== 'cr-h') return;
+    const h = Number(ev.data.h);
+    if (h > 0) frame.style.height = Math.max(h + 24, body.clientHeight) + 'px';
+  };
+  window.addEventListener('message', onMsg);
+  dropFrameMsg = () => { window.removeEventListener('message', onMsg); dropFrameMsg = null; };
+}
 let renderToken = 0;
 async function showRendered(m, kind, token) {
   const body = $('vBody');
@@ -1817,11 +1838,15 @@ async function showRendered(m, kind, token) {
     body.innerHTML = tail;
     const frame = document.createElement('iframe');
     frame.className = 'htmlframe';
-    frame.setAttribute('sandbox', 'allow-same-origin allow-popups allow-popups-to-escape-sandbox');
+    const raw = m.text || '';
+    const native = noteBringsMath(raw);
+    frame.setAttribute('sandbox', native ? 'allow-scripts allow-popups' : 'allow-same-origin allow-popups allow-popups-to-escape-sandbox');
     frame.referrerPolicy = 'no-referrer';
-    frame.srcdoc = paintHtmlMath(m.text || '');
+    frame.srcdoc = native ? withSizeProbe(htmlDoc(raw)) : paintHtmlMath(raw);
+    if (native) watchFrameSize(frame, body);
     body.prepend(frame);
     frame.onload = () => {
+      if (native) return;
       try {
         const doc = frame.contentDocument;
         frame.style.height = Math.max(doc.documentElement.scrollHeight, doc.body ? doc.body.scrollHeight : 0, body.clientHeight) + 'px';
@@ -1829,6 +1854,7 @@ async function showRendered(m, kind, token) {
     };
     return;
   }
+  if (dropFrameMsg) dropFrameMsg();
   const stashed = stashMath(m.text || '');
   body.innerHTML = `<div class="doc">${applyMath(renderMarkdown(stashed.s), stashed.chunks)}</div>${tail}`;
   body.querySelectorAll('a[data-rel]').forEach(a => {
@@ -1905,6 +1931,7 @@ function showFile(m) {
 const fmtSize = n => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
 
 function closeViewer() {
+  if (dropFrameMsg) dropFrameMsg();
   $('viewer').classList.remove('open');
   $('vBody').innerHTML = '';
 }
