@@ -56,6 +56,8 @@
   .assistant table { border-collapse: collapse; display: block; overflow-x: auto; font-size: 13px; margin: 0 0 .6em; }
   .assistant td, .assistant th { border: 1px solid #444; padding: 4px 6px; }
   .assistant blockquote { margin: 0 0 .6em; padding-left: 10px; border-left: 3px solid #555; color: #aaa; }
+  .assistant .math, .assistant .katex { overflow-wrap: normal; }
+  .assistant .katex-display { margin: .45em 0; overflow-x: auto; overflow-y: hidden; }
   .tool { font: 12.5px/1.4 ui-monospace, Menlo, monospace; color: #9da5b4; background: #252526; border: 1px solid #303030; border-radius: 8px; padding: 6px 9px; }
   .tool .txt { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .tool .txt.out { display: block; -webkit-line-clamp: unset; white-space: pre-wrap; max-height: 36vh; overflow: auto; margin-top: 4px; }
@@ -1302,7 +1304,7 @@ function renderItem(it) {
   el.className = 'msg ' + it.k;
   if (it.k === 'human') el.innerHTML = `<div class="bubble">${esc(it.t || '')}</div>`;
   // it.h comes from the whitelist sanitizer in server.mjs (pageHelpers.clean): plain tags only, text escaped.
-  else if (it.k === 'assistant') el.innerHTML = it.h || '';
+  else if (it.k === 'assistant') { el.innerHTML = it.h || ''; typesetChat(el); }
   else if (it.k === 'tool') {
     const out = /\n/.test(it.t || '');
     el.innerHTML = `<div class="txt${out ? ' out' : ''}">${esc(it.t || '')}</div>`;
@@ -1702,6 +1704,22 @@ function htmlDoc(raw) {
 const KATEX_CSS = 'https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css';
 const KATEX_JS = 'https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.js';
 let katexLoading = null;
+function typesetChat(root) {
+  const nodes = [...root.querySelectorAll('.math:not([data-set])')];
+  if (!nodes.length) return;
+  const run = () => {
+    if (!window.katex) return;
+    for (const node of nodes) {
+      if (!node.isConnected || node.dataset.set) continue;
+      const tex = node.textContent.replace(/\\label\{[^}]*\}/g, '');
+      try { node.innerHTML = katex.renderToString(tex, { displayMode: node.dataset.display === '1', throwOnError: false, output: 'html' }); }
+      catch { /* leave the TeX visible */ }
+      node.dataset.set = '1';
+    }
+  };
+  if (window.katex) run();
+  else loadKatex().then(run);
+}
 function loadKatex() {
   if (window.katex) return Promise.resolve();
   if (!katexLoading) katexLoading = new Promise(resolve => {
