@@ -486,6 +486,50 @@ async function verifyTotp(code) {
   }
 }
 
+function storedInfo() {
+  try { return JSON.parse(store.get('urlinfo') || 'null'); } catch { return null; }
+}
+function rememberInfo(x) {
+  if (x && !x.self && x.v === 2 && x.iv && x.data && x.updated) store.set('urlinfo', JSON.stringify({ v: x.v, iv: x.iv, data: x.data, updated: x.updated }));
+}
+function newerInfo(a, b) {
+  if (!a?.updated) return b || a || null;
+  if (!b?.updated) return a;
+  return a.updated >= b.updated ? a : b;
+}
+function githubRepo() {
+  const m = /^([^.]+)\.github\.io$/i.exec(location.hostname);
+  const repo = location.pathname.split('/').filter(Boolean)[0];
+  return m && repo ? `${m[1]}/${repo}` : '';
+}
+async function fetchJson(url, ms = 8000) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), ms);
+  try {
+    const r = await fetch(url, { cache: 'no-store', signal: ctl.signal });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch { return null; }
+  finally { clearTimeout(timer); }
+}
+let lastGithubAt = 0;
+// GitHub Pages caches url.json for about 10 minutes. The contents API has the address
+// the computer just published, which is what a reboot needs.
+async function githubInfo() {
+  const repo = githubRepo();
+  if (!repo || Date.now() - lastGithubAt < 60000) return null;
+  lastGithubAt = Date.now();
+  const api = await fetchJson(`https://api.github.com/repos/${repo}/contents/url.json`);
+  if (!api?.content) return null;
+  try { return JSON.parse(atob(String(api.content).replace(/\s/g, ''))); } catch { return null; }
+}
+async function loadInfo() {
+  const pages = await fetchJson('url.json?t=' + Date.now());
+  const best = pages?.self ? pages : newerInfo(pages, storedInfo());
+  if (best && !best.self) rememberInfo(best);
+  return best;
+}
+
 async function boot() {
   authed = false;
   clearTimeout(retryTimer);
@@ -497,11 +541,8 @@ async function boot() {
     return;
   }
   gate({ msg: '正在查找电脑…' });
-  try {
-    info = await fetch('url.json?t=' + Date.now(), { cache: 'no-store' }).then(r => r.json());
-  } catch {
-    return gate({ msg: '读取失败，请检查手机网络', err: true, retry: true });
-  }
+  info = await loadInfo();
+  if (!info) return gate({ msg: '读取失败，请检查手机网络', err: true, retry: true });
   if (pending) store.set('key', pending.key);
   try {
     base = await resolveBase();
@@ -516,8 +557,22 @@ async function boot() {
   try {
     me = await api('/api/me').then(r => r.json());
   } catch {
-    autoRetry();
-    return gate({ msg: '电脑不在线：可能关机、睡眠，或服务刚重启（新地址约 1 分钟后生效）。会自动重试…', retry: true });
+    const fresh = await githubInfo();
+    const picked = newerInfo(info, fresh);
+    if (fresh && picked?.updated && picked.updated !== info.updated) {
+      info = picked;
+      rememberInfo(info);
+      try {
+        base = await resolveBase();
+        me = await api('/api/me').then(r => r.json());
+      } catch {
+        autoRetry();
+        return gate({ msg: '电脑不在线：可能关机、睡眠，或刚重启。正在查找新地址，会自动重试…', retry: true });
+      }
+    } else {
+      autoRetry();
+      return gate({ msg: '电脑不在线：可能关机、睡眠，或刚重启。正在查找新地址，会自动重试…', retry: true });
+    }
   }
   if (!me.paired) {
     store.set('token', null);
