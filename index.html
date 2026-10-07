@@ -130,7 +130,8 @@
   #chatTools { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; min-width: 0; }
   #chatTools::-webkit-scrollbar { display: none; }
   #chatTools button { font-size: 12.5px; padding: 3px 10px; border-radius: 14px; flex: none; white-space: nowrap; }
-  #suggest { display: flex; flex-direction: column; gap: 4px; max-height: 34vh; overflow-y: auto; }
+  #compose { position: relative; }
+  #suggest { position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); z-index: 6; display: flex; flex-direction: column; gap: 4px; max-height: 40vh; overflow-y: auto; background: #252526; border: 1px solid #3c3c3c; border-radius: 10px; padding: 4px; box-shadow: 0 -8px 24px #0008; }
   #suggest[hidden] { display: none; }
   #suggest button { text-align: left; white-space: normal; padding: 7px 10px; font-size: 13px; }
   #suggest .sub { display: block; color: #888; font-size: 11px; margin-top: 1px; }
@@ -287,19 +288,21 @@
 </main>
 
 <footer>
-  <div id="suggest" hidden></div>
   <div id="chatTools">
     <button id="pickMode" hidden></button>
     <button id="pickModel" hidden></button>
     <button id="pickHistory">标签</button>
     <button id="newChat">＋ 新建</button>
   </div>
+  <div id="compose">
+  <div id="suggest" hidden></div>
   <div class="row">
     <textarea id="text" rows="1" placeholder="发给 Cursor Agent…" enterkeyhint="send"></textarea>
     <button id="img" title="附加图片" aria-label="附加图片"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg></button>
     <input id="imgFile" type="file" accept="image/*" hidden>
     <button id="mic" title="语音输入" aria-label="语音输入"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
     <button id="send">发送</button>
+  </div>
   </div>
   <div id="msg"></div>
 </footer>
@@ -659,6 +662,10 @@ function connect() {
     else if (m.t === 'chat') renderChat(m.chat);
     else if (m.t === 'windows') { windows = m.list; currentWindow = m.current; if (sheetKind === 'windows') showWindows(); }
     else if (m.t === 'attached') {
+      if (currentWindow && currentWindow !== m.id) rememberDraft(currentWindow);
+      const keepTyping = !currentWindow && (text.value || picked.length);
+      if (keepTyping) rememberDraft(m.id);
+      else if (currentWindow !== m.id) showDraft(m.id);
       store.set('window', m.id);
       currentWindow = m.id;
       $('titleText').textContent = winLabel(m.title).name;
@@ -1024,7 +1031,7 @@ function showInstallHelp() {
 $('sheet').addEventListener('click', async e => {
   const b = e.target.closest('button');
   if (!b) return;
-  if (b.dataset.win) { closeSheet(); return send({ t: 'attach', id: b.dataset.win }); }
+  if (b.dataset.win) { rememberDraft(currentWindow); closeSheet(); return send({ t: 'attach', id: b.dataset.win }); }
   if (b.dataset.tabModel) { closeSheet(); status('读取这个对话的模型…'); return send({ t: 'tabModel', label: b.dataset.tabModel }); }
   if (b.dataset.kind) { closeSheet(); status('切换中…'); return send({ t: 'pickMenu', kind: b.dataset.kind, label: b.dataset.label }); }
   if (b.dataset.chopen) { closeSheet(); return openFile(b.dataset.chopen); }
@@ -2016,17 +2023,39 @@ $('vWrap').onclick = () => {
 const text = $('text');
 function autosize() { text.style.height = 'auto'; text.style.height = text.scrollHeight + 'px'; }
 let picked = [];
+const drafts = new Map();
 let suggestSeq = 0;
 let suggestTimer = 0;
-function hideSuggest() { $('suggest').hidden = true; $('suggest').innerHTML = ''; }
-function tokenAtCursor() {
+function hideSuggest() { $('suggest').hidden = true; $('suggest').innerHTML = ''; $('suggest')._items = []; }
+function rememberDraft(id) {
+  if (!id) return;
+  drafts.set(id, { text: text.value, picked: picked.map(p => ({ ...p })) });
+}
+function showDraft(id) {
+  const d = drafts.get(id) || { text: '', picked: [] };
+  text.value = d.text || '';
+  picked = (d.picked || []).map(p => ({ ...p }));
+  hideSuggest();
+  autosize();
+  scheduleSuggest();
+}
+function tokenAt(pos) {
   const v = text.value;
-  const i = text.selectionStart ?? v.length;
+  const i = Math.max(0, Math.min(pos, v.length));
   let start = i;
   while (start > 0 && !/\s/.test(v[start - 1])) start--;
   const raw = v.slice(start, i);
   if (!/^[@/]/.test(raw)) return null;
   return { trigger: raw[0], query: raw.slice(1), start, end: i };
+}
+function tokenAtCursor() {
+  const v = text.value;
+  const i = text.selectionStart;
+  const here = tokenAt(i == null ? v.length : i);
+  // Some phone WebViews report the caret at 0 while the user is typing at the end.
+  if (here) return here;
+  if ((i == null || i === 0) && v.length) return tokenAt(v.length);
+  return null;
 }
 function pickToken(p) {
   return p.trigger === '/' ? (p.label.startsWith('/') ? p.label : '/' + p.label) : '@' + String(p.label || '').replace(/^@/, '');
@@ -2036,24 +2065,28 @@ function draftPicks(value) {
 }
 function scheduleSuggest() {
   const seq = ++suggestSeq;
-  const tok = tokenAtCursor();
   clearTimeout(suggestTimer);
-  if (!tok) { hideSuggest(); return; }
   suggestTimer = setTimeout(() => {
     if (seq !== suggestSeq) return;
+    const tok = tokenAtCursor();
+    if (!tok) { hideSuggest(); return; }
+    const box = $('suggest');
+    box.hidden = false;
+    if (!box.querySelector('[data-sug]')) box.innerHTML = '<div class="hint">查找中…</div>';
     send({ t: 'suggest', trigger: tok.trigger, query: tok.query, seq });
-  }, 180);
+  }, 160);
 }
 function showSuggest(m) {
   if (m.seq !== suggestSeq) return;
   const tok = tokenAtCursor();
   if (!tok || tok.trigger !== m.trigger) return;
   const items = m.items || [];
-  if (!items.length) { hideSuggest(); return; }
   const box = $('suggest');
   box.hidden = false;
-  box.innerHTML = items.map((it, n) => `<button type="button" data-sug="${n}"><span class="lbl">${esc(it.label)}${it.detail ? `<span class="sub">${esc(it.detail)}</span>` : ''}</span></button>`).join('');
   box._items = items;
+  box.innerHTML = items.length
+    ? items.map((it, n) => `<button type="button" data-sug="${n}"><span class="lbl">${esc(it.label)}${it.detail ? `<span class="sub">${esc(it.detail)}</span>` : ''}</span></button>`).join('')
+    : '<div class="hint">没有匹配</div>';
 }
 $('suggest').addEventListener('mousedown', e => e.preventDefault());
 $('suggest').addEventListener('click', e => {
@@ -2076,14 +2109,15 @@ $('suggest').addEventListener('click', e => {
   const v = text.value;
   text.value = v.slice(0, tok.start) + token + ' ' + v.slice(tok.end);
   picked.push({ trigger: tok.trigger, label: it.label, detail: it.detail || '' });
+  rememberDraft(currentWindow);
   hideSuggest();
   const pos = tok.start + token.length + 1;
   text.focus();
   text.setSelectionRange(pos, pos);
   autosize();
 });
-text.addEventListener('input', () => { autosize(); scheduleSuggest(); });
-text.addEventListener('keyup', e => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') scheduleSuggest(); });
+text.addEventListener('input', () => { autosize(); rememberDraft(currentWindow); scheduleSuggest(); });
+text.addEventListener('keyup', scheduleSuggest);
 text.addEventListener('click', scheduleSuggest);
 text.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== text) hideSuggest(); }, 200));
 $('send').onclick = () => {
@@ -2098,6 +2132,7 @@ $('send').onclick = () => {
   stoppedRequest = '';
   picked = [];
   text.value = ''; autosize();
+  rememberDraft(currentWindow);
   if (mode === 'chat') list.scrollTop = list.scrollHeight;
 };
 
