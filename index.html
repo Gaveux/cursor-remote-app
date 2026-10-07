@@ -130,6 +130,10 @@
   #chatTools { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; min-width: 0; }
   #chatTools::-webkit-scrollbar { display: none; }
   #chatTools button { font-size: 12.5px; padding: 3px 10px; border-radius: 14px; flex: none; white-space: nowrap; }
+  #suggest { display: flex; flex-direction: column; gap: 4px; max-height: 34vh; overflow-y: auto; }
+  #suggest[hidden] { display: none; }
+  #suggest button { text-align: left; white-space: normal; padding: 7px 10px; font-size: 13px; }
+  #suggest .sub { display: block; color: #888; font-size: 11px; margin-top: 1px; }
   #chatTools #pickModel { flex: 0 1 auto; min-width: 84px; overflow: hidden; text-overflow: ellipsis; }
   .row { display: flex; gap: 8px; min-width: 0; align-items: flex-end; }
   textarea { flex: 1; min-width: 0; min-height: 40px; max-height: 32vh; padding: 9px 10px; resize: none; font-size: 16px; line-height: 1.35; }
@@ -283,6 +287,7 @@
 </main>
 
 <footer>
+  <div id="suggest" hidden></div>
   <div id="chatTools">
     <button id="pickMode" hidden></button>
     <button id="pickModel" hidden></button>
@@ -677,6 +682,7 @@ function connect() {
     else if (m.t === 'params') showParams(m);
     else if (m.t === 'changes') showChanges(m);
     else if (m.t === 'file') showFile(m);
+    else if (m.t === 'suggest') showSuggest(m);
     else if (m.t === 'status') {
       status(m.msg, m.ok);
       if (!m.ok && (sheetKind === 'modelSettings' || sheetKind === 'menu') && !$('sheet').querySelector('button')) {
@@ -2009,14 +2015,88 @@ $('vWrap').onclick = () => {
 /* ---------- composer ---------- */
 const text = $('text');
 function autosize() { text.style.height = 'auto'; text.style.height = text.scrollHeight + 'px'; }
-text.addEventListener('input', autosize);
+let picked = [];
+let suggestSeq = 0;
+let suggestTimer = 0;
+function hideSuggest() { $('suggest').hidden = true; $('suggest').innerHTML = ''; }
+function tokenAtCursor() {
+  const v = text.value;
+  const i = text.selectionStart ?? v.length;
+  let start = i;
+  while (start > 0 && !/\s/.test(v[start - 1])) start--;
+  const raw = v.slice(start, i);
+  if (!/^[@/]/.test(raw)) return null;
+  return { trigger: raw[0], query: raw.slice(1), start, end: i };
+}
+function pickToken(p) {
+  return p.trigger === '/' ? (p.label.startsWith('/') ? p.label : '/' + p.label) : '@' + String(p.label || '').replace(/^@/, '');
+}
+function draftPicks(value) {
+  return picked.filter(p => value.includes(pickToken(p))).map(p => ({ trigger: p.trigger, label: p.label, detail: p.detail || '' }));
+}
+function scheduleSuggest() {
+  const seq = ++suggestSeq;
+  const tok = tokenAtCursor();
+  clearTimeout(suggestTimer);
+  if (!tok) { hideSuggest(); return; }
+  suggestTimer = setTimeout(() => {
+    if (seq !== suggestSeq) return;
+    send({ t: 'suggest', trigger: tok.trigger, query: tok.query, seq });
+  }, 180);
+}
+function showSuggest(m) {
+  if (m.seq !== suggestSeq) return;
+  const tok = tokenAtCursor();
+  if (!tok || tok.trigger !== m.trigger) return;
+  const items = m.items || [];
+  if (!items.length) { hideSuggest(); return; }
+  const box = $('suggest');
+  box.hidden = false;
+  box.innerHTML = items.map((it, n) => `<button type="button" data-sug="${n}"><span class="lbl">${esc(it.label)}${it.detail ? `<span class="sub">${esc(it.detail)}</span>` : ''}</span></button>`).join('');
+  box._items = items;
+}
+$('suggest').addEventListener('mousedown', e => e.preventDefault());
+$('suggest').addEventListener('click', e => {
+  const b = e.target.closest('[data-sug]');
+  if (!b) return;
+  const it = ($('suggest')._items || [])[Number(b.dataset.sug)];
+  const tok = tokenAtCursor();
+  if (!it || !tok) return;
+  if (it.more) {
+    const seq = ++suggestSeq;
+    send({ t: 'suggest', trigger: tok.trigger, query: tok.query, more: it.label, seq });
+    return;
+  }
+  if (it.category) {
+    const seq = ++suggestSeq;
+    send({ t: 'suggest', trigger: tok.trigger, query: tok.query, category: it.label, seq });
+    return;
+  }
+  const token = pickToken({ trigger: tok.trigger, label: it.label });
+  const v = text.value;
+  text.value = v.slice(0, tok.start) + token + ' ' + v.slice(tok.end);
+  picked.push({ trigger: tok.trigger, label: it.label, detail: it.detail || '' });
+  hideSuggest();
+  const pos = tok.start + token.length + 1;
+  text.focus();
+  text.setSelectionRange(pos, pos);
+  autosize();
+});
+text.addEventListener('input', () => { autosize(); scheduleSuggest(); });
+text.addEventListener('keyup', e => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') scheduleSuggest(); });
+text.addEventListener('click', scheduleSuggest);
+text.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== text) hideSuggest(); }, 200));
 $('send').onclick = () => {
   const v = text.value;
   if (!v.trim()) return;
-  send(rerunStopped ? { t: 'resubmit', text: v } : { t: 'send', text: v, submit: true });
+  const picks = draftPicks(v);
+  hideSuggest();
+  suggestSeq++;
+  send(rerunStopped ? { t: 'resubmit', text: v, picks } : { t: 'send', text: v, submit: true, picks });
   if (rerunStopped) status('正在重新运行刚才的请求…');
   rerunStopped = false;
   stoppedRequest = '';
+  picked = [];
   text.value = ''; autosize();
   if (mode === 'chat') list.scrollTop = list.scrollHeight;
 };
