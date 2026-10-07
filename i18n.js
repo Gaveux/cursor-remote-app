@@ -51,7 +51,7 @@ const I18N = (() => {
     '读取这个对话的模型…': 'Loading this chat’s model…',
     '快速': 'Fast', '上下文': 'Context', '思考强度': 'Effort',
     '快速、上下文、思考强度和模型只作用于当前这条对话。': 'Fast, context, effort, and model apply only to this chat.',
-    '切换快速模式…': 'Toggling Fast…', '读取模型设置…': 'Loading model settings…', '读取上下文选项…': 'Loading context options…', '读取思考强度选项…': 'Loading effort options…',
+    '切换快速模式…': 'Toggling Fast…', '读取模型设置…': 'Loading model settings…', '查找中…': 'Looking…', '没有匹配': 'No matches', '读取上下文选项…': 'Loading context options…', '读取思考强度选项…': 'Loading effort options…',
     '打不开模型设置': 'Could not open model settings', 'Cursor 没有响应': 'Cursor did not respond',
     '当前模型没有这项设置': 'This model has no such setting', '当前模型没有快速开关': 'This model has no Fast switch', '没有这项设置': 'No such setting',
     '更大上下文、更贵': 'Larger context, costs more', '参数': 'Params', '模型': 'Model', '改动会直接应用到电脑上 Cursor 的这个模型。': 'Changes apply directly to this model in Cursor on your computer.',
