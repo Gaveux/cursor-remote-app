@@ -120,7 +120,12 @@
   #queueBar .q { display: flex; align-items: center; gap: 6px; font-size: 13.5px; }
   #queueBar .q .qt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #ccc; }
   #queueBar .q .qt::before { content: "○ "; color: #777; }
+  #queueBar .q .qt.sa { white-space: normal; }
   #queueBar .q .qt.sa::before { content: "⇢ "; color: #4af; }
+  #queueBar .q .qt.sa .sub { display: block; font-size: 12px; color: #8ab; font-weight: 400; }
+  #queueBar .q .qt.sa.run::before { content: "● "; color: #4af; }
+  #queueBar .q .qt.sa.err::before { content: "× "; color: #f77; }
+  #queueBar .q .qt.sa.done::before { content: "✓ "; color: #6a6; }
   #queueBar .q .qt.req::before { content: "✎ "; color: #e5c07b; }
   #queueBar .run.sub { color: #e5c07b; }
   #queueBar button { font-size: 12px; padding: 3px 9px; flex: none; }
@@ -1442,10 +1447,21 @@ function renderQueue(busy, queued, subs = [], readonly = false, changed = 0) {
   const bar = $('queueBar');
   let html = '';
   if (readonly) html += `<div class="run sub"><span>正在查看子 Agent 的对话（只读）</span><button data-main>返回主对话</button></div>`;
-  if (subs.length && !readonly) {
-    html += `<button class="qh fold" data-fold>${subsOpen ? '▾' : '▸'} <span>子 Agent 运行中 ${subs.length} 个</span></button>`;
-    if (subsOpen) html += subs.map(n => `<div class="q"><span class="qt sa">${esc(n)}</span>`
-      + `<button data-sub="${esc(n)}" data-part="open">查看</button><button data-sub="${esc(n)}" data-part="stop">停止</button></div>`).join('');
+  const agents = subs.map(s => typeof s === 'string' ? { name: s, state: 'running', detail: '' } : s).filter(s => s && s.name);
+  if (agents.length && !readonly) {
+    const running = agents.filter(s => s.state === 'running').length;
+    const title = running
+      ? (running === agents.length ? `子 Agent 运行中 ${running} 个` : `子 Agent 运行中 ${running} 个，共 ${agents.length} 个`)
+      : `子 Agent ${agents.length} 个，都已结束`;
+    html += `<div class="qh">${title}</div>`;
+    html += agents.map(s => {
+      const st = s.state === 'running' ? '运行中' : s.state === 'error' ? '已停止' : '已完成';
+      const mark = s.state === 'running' ? 'run' : s.state === 'error' ? 'err' : 'done';
+      return `<div class="q"><span class="qt sa ${mark}">${esc(s.name)}<span class="sub"><span>${st}</span>${s.detail ? ' · ' + esc(s.detail) : ''}</span></span>`
+        + `<button data-sub="${esc(s.name)}" data-part="open">查看</button>`
+        + (s.state === 'running' ? `<button data-sub="${esc(s.name)}" data-part="stop">停止</button>` : '')
+        + `</div>`;
+    }).join('');
   }
   if (busy && !readonly) html += `<div class="run"><i></i><span>Agent 正在运行${queued.length ? '，下面的消息会在这一轮结束后依次发送' : '，现在发的消息会先排队'}</span><button data-stop>停止</button></div>`;
   if (stoppedRequest && !readonly) html += `<div class="q"><span class="qt req">${esc(stoppedRequest)}</span><button data-reedit>修改刚才的请求</button><button data-reedit-x>先不改</button></div>`;
@@ -1517,8 +1533,8 @@ $('queueBar').onclick = async e => {
       status('已停止子 Agent');
       return;
     }
-    setMode('term', { prefer: 'agent', match: b.dataset.sub });
-    status('正在读取终端…');
+    send({ t: 'subagent', name: b.dataset.sub, part: 'open' });
+    status('正在打开子 Agent…');
     return;
   }
   if (b.dataset.a === 'edit') return editQueued(b.dataset.q);
