@@ -29,7 +29,7 @@ const I18N = (() => {
     '↓ 最新': '↓ Latest', '刷新': 'Refresh',
     '标签': 'Tabs', '＋ 新建': '+ New',
     '发给 Cursor Agent…': 'Message Cursor Agent…', '发送': 'Send', '换行': 'Wrap', '在 App 中打开': 'Open in app', '重试': 'Retry',
-    '未连接': 'Not connected', '已连接': 'Connected', '断开，重连中…': 'Disconnected, reconnecting…', '已发送': 'Sent',
+    '未连接': 'Not connected', '已连接': 'Connected', '断开，重连中…': 'Disconnected, reconnecting…', '已发送': 'Sent', '发送中…': 'Sending…',
     '电脑端还没有发布地址（或还在用旧版本），请在电脑上重启服务': 'The computer has not published its address yet (or runs an old version). Restart the service on the computer.',
     '配对信息已失效（电脑端重置过），请重新配对': 'Pairing is no longer valid (the computer was reset). Please pair again.',
     '这台设备还没有配对。': 'This device is not paired yet.',
