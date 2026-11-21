@@ -694,6 +694,7 @@ function connect() {
     else if (m.t === 'suggest') showSuggest(m);
     else if (m.t === 'status') {
       status(m.msg, m.ok);
+      noteSendResult(m);
       if (!m.ok && (sheetKind === 'modelSettings' || sheetKind === 'menu') && !$('sheet').querySelector('button')) {
         const hint = $('sheet').querySelector('.hint');
         if (hint) hint.textContent = m.msg;
@@ -2120,21 +2121,45 @@ text.addEventListener('input', () => { autosize(); rememberDraft(currentWindow);
 text.addEventListener('keyup', scheduleSuggest);
 text.addEventListener('click', scheduleSuggest);
 text.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== text) hideSuggest(); }, 200));
+let sending = null;
+function noteSendResult(m) {
+  if (!sending) return;
+  const sent = m.ok && (m.msg === '已发送' || String(m.msg).includes('已加入排队'));
+  if (sent) {
+    if (text.value === sending) {
+      text.value = '';
+      picked = [];
+      autosize();
+      rememberDraft(currentWindow);
+    }
+    sending = null;
+    rerunStopped = false;
+    stoppedRequest = '';
+    return;
+  }
+  if (!m.ok && !text.value.trim()) {
+    text.value = sending;
+    autosize();
+    rememberDraft(currentWindow);
+    sending = null;
+  }
+}
 $('send').onclick = () => {
   const v = text.value;
-  if (!v.trim()) return;
+  if (!v.trim() || sending) return;
+  if (!(ws && ws.readyState === 1 && authed)) { status('未连接', false); return; }
   const picks = draftPicks(v);
   hideSuggest();
   suggestSeq++;
+  sending = v;
+  status('发送中…');
   send(rerunStopped ? { t: 'resubmit', text: v, picks } : { t: 'send', text: v, submit: true, picks });
-  if (rerunStopped) status('正在重新运行刚才的请求…');
-  rerunStopped = false;
-  stoppedRequest = '';
-  picked = [];
-  text.value = ''; autosize();
-  rememberDraft(currentWindow);
-  if (mode === 'chat') list.scrollTop = list.scrollHeight;
 };
+text.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+  e.preventDefault();
+  $('send').click();
+});
 
 /* ---------- voice input ---------- */
 // Android WebView has no Web Speech API, so the app uses the system recognizer through the bridge instead.
